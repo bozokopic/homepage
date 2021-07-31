@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bozo Kopic - ${self.title()}</title>
+    <link href="main.css" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <h1>Bozo Kopic - <%block name="title"/></h1>
+        <nav>
+            <span>[ <a href="index.html">About</a> ]</span>
+            <span>[ <a href="projects.html">Projects</a> ]</span>
+            <span>[ <a href="blog.html">Blog</a> ]</span>
+            <span>[ <a href="https://github.com/bozokopic">Github</a> ]</span>
+        </nav>
+    </header>
+    <main>
+        ${self.body()}
+    </main>
+</body>
+</html>
