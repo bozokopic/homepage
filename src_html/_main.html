@@ -3,17 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Bozo Kopic - ${self.title()}</title>
-    <link href="main.css" rel="stylesheet">
+    <title>${entry['title']}</title>
+    <link href="${root_prefix}index.xml" type="application/atom+xml" rel="alternate" />
+    <link href="${root_prefix}main.css" rel="stylesheet">
+    <%block name="head"/>
 </head>
 <body>
     <header>
-        <h1>Bozo Kopic - <%block name="title"/></h1>
+        <h1>Bozo Kopic - ${entry['title']}</h1>
         <nav>
-            <span>[ <a href="index.html">About</a> ]</span>
-            <span>[ <a href="projects.html">Projects</a> ]</span>
-            <span>[ <a href="blog.html">Blog</a> ]</span>
+            <span>[ <a href="${root_prefix}index.html">About</a> ]</span>
+            <span>[ <a href="${root_prefix}projects.html">Projects</a> ]</span>
+            <span>[ <a href="${root_prefix}blog.html">Blog</a> ]</span>
             <span>[ <a href="https://github.com/bozokopic">Github</a> ]</span>
+            <span>[ <a href="${root_prefix}index.xml">Feed</a> ]</span>
         </nav>
     </header>
     <main>

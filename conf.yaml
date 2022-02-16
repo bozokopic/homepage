@@ -1,0 +1,23 @@
+id: ab6e1271-bb80-4299-9f2d-9d7ff897f6cf
+link: https://bozo.kopic.xyz
+author:
+    name: Bozo Kopic
+    email: bozo@kopic.xyz
+entries:
+  - id: 8e783e33-74fa-4e62-ab94-ef626823ce8a
+    title: About
+    src: index.html
+    published: "2021-07-31T00:00:00Z"
+  - id: e4eb276b-3560-4f72-aec9-b78b069a740a
+    title: Projects
+    src: projects.html
+    published: "2021-07-31T00:00:00Z"
+  - id: ccc3ba69-df74-42f1-88ca-1ba9e8d59273
+    title: Blog
+    src: blog.html
+    published: "2021-07-31T00:00:00Z"
+  # - id: feef4951-2938-4ddf-b52b-ab35604749e5
+  #   title: Python asyncio application lifetime
+  #   src: blog/run_asyncio.rst
+  #   published: "2020-07-10T00:00:00Z"
+  #   updated: "2022-02-16T18:00:55Z"

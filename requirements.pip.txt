@@ -1,2 +1,5 @@
-doit == 0.33.1
-mako == 1.1.4
+docutils ~= 0.17.1
+doit ~= 0.34.1
+hat-json ~= 0.5.4
+lxml ~= 4.7.1
+mako ~= 1.1.6

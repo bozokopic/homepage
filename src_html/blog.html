@@ -1,6 +1,31 @@
 <%inherit file="_main.html"/>
-<%block name="title">Blog</%block>
 
-<p>
-WIP
-</p>
+<%
+from pathlib import Path
+import collections
+
+entries = collections.deque()
+
+for entry in sorted(conf['entries'],
+                    reverse=True,
+                    key=lambda i: i['published']):
+    if not entry['src'].startswith('blog/'):
+        continue
+
+    href = str(Path(entry['src']).with_suffix('.html'))
+    published = entry['published'].split('T', 1)[0]
+    label = f"{published} - {entry['title']}"
+    if 'updated' in entry:
+        updated = entry['updated'].split('T', 1)[0]
+        label += f" (updated {updated})"
+
+    entries.append((href, label))
+%>
+
+<ul>
+% for href, label in entries:
+    <li>
+        <a href="${href}">${label}</a>
+    </li>
+% endfor
+</ul>
