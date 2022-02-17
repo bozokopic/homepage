@@ -75,7 +75,7 @@ Architecture and organization of long-running "server" applications is complex
 problem for which multiple design patters exist. One of widely used is usage
 of event loop. By using event loop, application functionality is split into
 multiple loosely connected parts which execution is triggered by occurrence of
-specific event. During execution os specific application logic, multiple events
+specific event. During execution of specific application logic, multiple events
 can be queued as result of application logic or from external sources. These
 events can be used as triggers for execution of other parts of application
 logic. Usual implementations of event loop are closely related and therefore
@@ -95,7 +95,7 @@ application.
 
 `asyncio` is library distributed with CPython distribution that provides
 cross-platform implementation of event loop. Together with event loop
-implemetation and appropriate nonblocking IO function implementations,
+implementation and appropriate non-blocking IO function implementations,
 this library provides possibility to organize application logic by usage of
 coroutines. Coroutines provide synchronization points which are used for
 temporary delegation of execution flow to event loop engine. By using this
@@ -123,7 +123,7 @@ on `asyncio`.
 Signals
 -------
 
-One of main requirement which processes data is usage of some kind input/output
+One of main requirement for processing data is usage of some kind input/output
 mechanism for obtaining input data and providing processing result. Usual means
 for communication between application and "outside world" are writing/reading
 of files, communication based on pipes or shared memory, communication based
@@ -158,7 +158,7 @@ according to its current state of execution.
 Together with signals which behavior can be overridden, some signals can not
 be overridden and are strongly enforced by operating system kernel. Example of
 such signal is SIGKILL which signals unconditional termination of application
-process. Stopping application by sending SIGKILL is therfore considered
+process. Stopping application by sending SIGKILL is therefor considered
 last resort for terminating application which is without sufficient reason
 ignoring signals SIGINT or SIGTERM.
 
@@ -190,8 +190,10 @@ data is critical for well behaved system operation.
 ---------------------
 
 For determining behavior of `asyncio` application once it receives SIGINT,
-we will run applications and examen console output when we press Ctrl+C 5
-seconds after application is run and 15 seconds after application is run.
+we will run test applications and look at console output when we press Ctrl+C:
+
+    * 5 seconds after application is run
+    * 15 seconds after application is run
 
 Code of test application (`test.py`) is:
 
@@ -250,7 +252,7 @@ output::
         fd_event_list = self._selector.poll(timeout, max_ev)
     KeyboardInterrupt
 
-From this call stack trace we can observe that `KeyboardInterrupt` is raised
+From this call stack trace, we can observe that `KeyboardInterrupt` is raised
 from method which is part of internal `asyncio` implementation and is
 propagated directly to `asyncio.run` bypassing `main` coroutine.
 
@@ -297,10 +299,10 @@ handling of signals is necessary, because application can receive lifetime
 controlling signals at any time.
 
 
-`hat.util.run_asyncio`
-----------------------
+`hat.aio.run_asyncio`
+---------------------
 
-`hat-util` package provides function `hat.util.run_asyncio` which can be used
+`hat-aio` package provides function `hat.aio.run_asyncio` which can be used
 instead of `asyncio.run`. This function overrides default handlers associated
 with signals SIGINT and SIGTERM and replaces them with routine which cancels
 initially run task (task created based on execution of `main` coroutine).
@@ -311,21 +313,21 @@ Cancellation of `asyncio` task is implemented as raising of
 synchronization point.
 
 By suppressing `KeyboardInterrupt` and raising `asyncio.CancelledError`
-exceptions we have better reasoning where and when this exception will occur.
+exceptions, we have better reasoning where and when this exception will occur.
 This allows us easier handling of termination requests and better organization
 and control of cleanup code execution.
 
 Because `asyncio.CancelledError` exceptions are raised only on synchronization
 points (where `await` is used), additional care must be used that coroutines
-do not use long lasting blocking code and thus support promp reaction to
+do not use long lasting blocking code and thus support prompt reaction to
 received signals.
 
-Additionally, `hat.util.run_asyncio` cancels running task only once no matter
+Additionally, `hat.aio.run_asyncio` cancels running task only once, no matter
 how many signals are sent to application. This provides easier cleanup
 implementation because cleanup procedure won't be interrupter with another
 termination request.
 
-We can run test script by replacing `asyncio.run` with `hat.util.run_asyncio`
+We can run test script by replacing `asyncio.run` with `hat.aio.run_asyncio`
 and `KeyboardInterrupt` with `asyncio.CancelledError`:
 
 .. code:: python
@@ -348,21 +350,63 @@ and `KeyboardInterrupt` with `asyncio.CancelledError`:
 
     if __name__ == '__main__':
         try:
-            hat.util.run_asyncio(main())
+            hat.aio.run_asyncio(main())
         except asyncio.CancelledError:
-            print('>> hat.util.run_asyncio')
+            print('>> hat.aio.run_asyncio')
 
 If we press Ctrl+C after 5 seconds, application will continue running for
 another 5 seconds and then terminate with console output::
 
     >> asyncio.sleep
-    >> hat.util.run_asyncio
+    >> hat.aio.run_asyncio
 
 If we press Ctrl+C after 15 seconds, application will terminate instantly
 with console output::
 
     >> asyncio.sleep
-    >> hat.util.run_asyncio
+    >> hat.aio.run_asyncio
+
+
+`hat.aio.run_asyncio` vs `asyncio.run`
+--------------------------------------
+
+Although at first glace, `hat.aio.run_asyncio` looks exactly as `asyncio.run`
+with added signal handling, user of this function should be aware of few
+subtle differences.
+
+First obvious difference is additional optional parameter `loop` which can
+be provided to `hat.aio.run_asyncio`. This parameter can be set to loop
+instance which should be used as basis for provided coroutine execution.
+If this parameter is set to ``None``, `hat.aio.run_asyncio` will create
+new loop instance and register it as current thread's default loop
+(same behavior as in `asyncio.run`).
+
+Second important difference is associated with "cleanup" procedure. When
+execution of coroutine by `asyncio.run` is done, all active tasks, associated
+with loop instance, are canceled and loop is run until all cleanup
+actions are finished. Then loop is closed and `asyncio.run` finishes execution.
+In contrast, `hat.aio.run_asyncio` only cancels single task - one representing
+execution of provided coroutine. Once this task is done
+(because of available result or `asyncio.CancelledError` propagation),
+`hat.aio.run_asyncio` finishes execution without closing loop instance.
+
+Reasons for different "cleanup" semantics of `hat.aio.run_asyncio` are:
+
+    * If instance of loop is explicitly provided as `hat.aio.run_asyncio`
+      argument, then it should be kept open for possibility of it's re-usage
+      (usage of single loop instance for multiple `hat.aio.run_asyncio` calls).
+
+    * By explicitly providing only single coroutine to `hat.aio.run_asyncio`,
+      responsibility of `hat.aio.run_asyncio` is restricted only to
+      execution/canceling of provided coroutine. All other tasks don't have
+      to be corelated to provided coroutine and therefor should not be
+      canceled by `hat.aio.run_asyncio`.
+
+    * It is responsibility of each task (executing coroutine) to manage
+      lifetime of possibly newly spawned sub-tasks. Therefor, if "main"
+      coroutine spawns new tasks, execution of this tasks should be
+      taken into account during "main" coroutine cleanup (usually by
+      canceling and/or awaiting their execution).
 
 
 Signals in Windows
@@ -373,8 +417,8 @@ the signal handling procedures, as defined by C standard library, operate only
 inside scope of single process and can not be used for communication between
 processes.
 
-For Windows application process, request for process termination is usually done
-by calling `TerminateProcess` (`kernel32.dll` function). This request is
+For Windows application process, request for process termination is usually
+done by calling `TerminateProcess` (`kernel32.dll` function). This request is
 unconditional and with its semantics it is closest to the usage of SIGKILL
 signal.
 
@@ -438,7 +482,7 @@ Windows events:
       other process group.
 
 
-`hat.util.run_asyncio` on Windows
+`hat.aio.run_asyncio` on Windows
 ---------------------------------
 
 Implementation of `run_asyncio` takes into account previously mentioned
@@ -454,5 +498,5 @@ occurrence which can last up to 0.5 second.
 
 Because of these addition logic implemented inside `run_asyncio`, same code
 provided as example of running `asyncio` application with
-`hat.util.run_asyncio` can be run on Windows with same behavior as on other
+`hat.aio.run_asyncio` can be run on Windows with same behavior as on other
 systems.

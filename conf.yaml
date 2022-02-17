@@ -16,8 +16,8 @@ entries:
     title: Blog
     src: blog.html
     published: "2021-07-31T00:00:00Z"
-  # - id: feef4951-2938-4ddf-b52b-ab35604749e5
-  #   title: Python asyncio application lifetime
-  #   src: blog/run_asyncio.rst
-  #   published: "2020-07-10T00:00:00Z"
-  #   updated: "2022-02-16T18:00:55Z"
+  - id: feef4951-2938-4ddf-b52b-ab35604749e5
+    title: Python asyncio application lifetime
+    src: blog/run_asyncio.rst
+    published: "2020-07-10T00:00:00Z"
+    updated: "2022-02-17T01:32:00Z"
