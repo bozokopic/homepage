@@ -3,3 +3,4 @@ doit ~= 0.34.1
 hat-json ~= 0.5.4
 lxml ~= 4.7.1
 mako ~= 1.1.6
+pygments ~= 2.11.2
