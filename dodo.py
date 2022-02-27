@@ -150,6 +150,9 @@ def _build_feed():
     entries = collections.deque()
 
     for i in conf['entries']:
+        if 'published' not in i:
+            continue
+
         src_path = (build_dir / i["src"]).with_suffix('.html')
         link = str(src_path.relative_to(build_dir))
         root = lxml.html.fromstring(src_path.read_text())

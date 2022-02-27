@@ -6,10 +6,10 @@ import collections
 
 entries = collections.deque()
 
-for entry in sorted(conf['entries'],
+for entry in sorted((i for i in conf['entries'] if 'published' in i),
                     reverse=True,
                     key=lambda i: i['published']):
-    if not entry['src'].startswith('blog/'):
+    if not entry['src'].startswith('articles/'):
         continue
 
     href = str(Path(entry['src']).with_suffix('.html'))

@@ -13,11 +13,14 @@ entries:
     src: projects.html
     published: "2021-07-31T00:00:00Z"
   - id: ccc3ba69-df74-42f1-88ca-1ba9e8d59273
-    title: Blog
-    src: blog.html
+    title: Articles
+    src: articles.html
     published: "2021-07-31T00:00:00Z"
   - id: feef4951-2938-4ddf-b52b-ab35604749e5
     title: Python asyncio application lifetime
-    src: blog/run_asyncio.rst
+    src: articles/run_asyncio.rst
     published: "2020-07-10T00:00:00Z"
     updated: "2022-02-17T01:32:00Z"
+  - id: a53f1d2e-2e36-4fb8-b2f8-6e77b1a7c50e
+    title: JSON Path
+    src: articles/json_path.rst
