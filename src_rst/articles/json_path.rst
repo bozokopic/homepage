@@ -23,118 +23,149 @@ Following definitions describe JSON Data, JSON Path and operations
 based on these data types. Mathematical notation is used only as
 "neutral" tool to describe data structures and operations without
 usage of any particular programming language or paradigm. Definitions
-themselves are not strict "mathematical" definitions.
+themselves are not strict - they should be taken as guidelines to
+implementation of JSON Path libraries.
 
 
 Data
 ''''
 
+JSON Data types can be defined as set :math:`Data`:
+
 .. math::
 
-    Data &= Constant \cup
-            Number \cup
-            String \cup
-            JArray \cup
-            Object \\
-    Constant &= \{ null, true, false \} \\
-    Number &= ℝ \\
-    JArray &= (a_1, ..., a_n), \quad
-              n \geq 0, \quad
-              a_i \in Data \\
-    Object &= \{ (k_1, v_1), ..., (k_n, v_n) \}, \quad
-              n \geq 0, \quad
-              k_i \in String, \quad
-              v_i \in Data
+    Data = Constant \cup Number \cup String \cup Array \cup Object
 
-JSON data types include:
+where:
 
-    * Constants
+* :math:`Constant`
 
-        ``null``, ``true`` and ``false``
+    .. math::
 
-    * Numbers
+        Constant = \{ null, true, false \}
 
-        Real numbers (JSON doesn't distinguish between integers and
-        floating point values)
+    Constant values represented with literals ``null``, ``true`` and ``false``.
 
-    * Strings
+* :math:`Number`
 
-        Sequence of Unicode characters including additional escaped sequences
+    .. math::
 
-    * Arrays
+        Number = ℝ
 
-        Ordered set of zero or more elements which are themselves JSON data
+    Real numbers (JSON doesn't distinguish between integers and floating point
+    values).
 
-    * Objects
+* :math:`String`
 
-        Associative sequence of key/value pairs where keys are strings and
-        values are one of JSON data
+    .. math::
+
+        String = (c_1, ..., c_n), \quad n \geq 0, \quad
+        c_i \in \text{Unicode characters}
+
+    Sequence of zero or more Unicode characters including additional escaped
+    sequences.
+
+* :math:`Array`
+
+    .. math::
+
+        Array = (a_1, ..., a_n), \quad n \geq 0, \quad a_i \in Data
+
+    Ordered set of zero or more elements which are themselves JSON Data.
+
+* :math:`Object`
+
+    .. math::
+
+        Object = \{ (k_1, v_1), ..., (k_n, v_n) \}, \quad
+        n \geq 0, \quad k_i \in String, \quad v_i \in Data
+
+    Associative sequence of key/value pairs where keys are strings and
+    values are one of JSON Data
 
 
 Path
 ''''
 
-.. math::
-
-    Path &= Integer \cup String \cup PArray, \quad Path \subset Data \\
-    Integer &= ℕ_0, \quad Integer \subset Number \\
-    PArray &= (a_1, ..., a_n), \quad
-              n \geq 0, \quad
-              a_i \in Path
-
-JSON Path is subset of JSON data used as reference to "part of" composite
-JSON data. If we introduce operator :math:`\&` as reference to data, we
-can define function :math:`ref(data, path)` as:
+JSON Path is reference to part of composite JSON data. It is itself
+represented as JSON Data and can be defined as set :math:`Path`:
 
 .. math::
 
-    ref(data, path) &= \begin{cases}
+    Path = Integer \cup String \cup PArray
+
+where:
+
+.. math::
+
+    Integer &= ℕ_0 \\
+    PArray &= (a_1, ..., a_n), \quad n \geq 0, \quad a_i \in Path
+
+In following definitions, we will use operator :math:`\&` as reference to
+data and operator :math:`*` as value of referenced data.
+
+Algorithm, used as basis for resolving path references, can be represented
+with function :math:`ref`:
+
+.. math::
+
+    ref(data, path) = \begin{cases}
         ref_int(data, path) & path \in Integer \\
         ref_str(data, path) & path \in String \\
         ref_arr(data, path) & path \in PArray
-    \end{cases} \\
-    ref_int(data, path_int) &= \begin{cases}
-        \&a_{path_int + 1} & data \in JArray, \quad
-                             data = (a_1, ..., a_n), \quad
-                             path_int < n \\
-        \&null & \text{otherwise}
-    \end{cases} \\
-    ref_str(data, path_str) &= \begin{cases}
-        \&v_i & data \in Object, \quad
-                data = \{ (k_1, v_1), ..., (k_n, v_n) \}, \quad
-                k_i = path_str \\
-        \&null & \text{otherwise}
-    \end{cases} \\
-    ref_arr(data, path_arr) &= \begin{cases}
-        \&data & path_arr = \emptyset \\
-        ref(ref(data, a_1), (a_2, ..., a_n)) & path_arr = (a_1, ..., a_n)
-    \end{cases} \\
-    & data \in Data, \quad
-      path \in Path, \quad
-      path_int \in Integer, \quad
-      path_str \in String, \quad
-      path_arr \in PArray \\
+    \end{cases}
 
-Usage of different data types as paths, enables as to reference data in
+where:
+
+.. math::
+
+    data \in Data, \quad path \in Path
+
+Usage of different data types as paths, enables one to reference data in
 different data structures:
 
-    * Integer
+* :math:`path \in Integer`
 
-        Integer paths are used for referencing elements of array. If
-        referenced element doesn't exist or provided data is not array,
-        neutral ``null`` element is referenced.
+    .. math::
 
-    * String
+        ref_int(data, path) = \begin{cases}
+            \&a_{path + 1} & data \in Array, \quad
+                                 data = (a_1, ..., a_n), \quad
+                                 path < n \\
+            \&null & \text{otherwise}
+        \end{cases}
 
-        String paths reference object entries based on object's key values.
-        If referenced key doesn't exist or provided data is not object,
-        neutral ``null`` element is referenced.
+    Integer paths are used for referencing elements of array. If
+    referenced element doesn't exist or provided data is not an array,
+    neutral ``null`` element is referenced.
 
-    * Array
+* :math:`path \in String`
 
-        Array paths are used for composition of other paths. Array
-        elements are used for recursive path application on result
-        of "previous" path application.
+    .. math::
+
+        ref_str(data, path) = \begin{cases}
+            \&v_i & data \in Object, \quad
+                    data = \{ (k_1, v_1), ..., (k_n, v_n) \}, \quad
+                    path = k_i \\
+            \&null & \text{otherwise}
+        \end{cases}
+
+    String paths reference object entries based on object's key values.
+    If referenced key doesn't exist or provided data is not an object,
+    neutral ``null`` element is referenced.
+
+* :math:`path \in PArray`
+
+    .. math::
+
+        ref_arr(data, path) = \begin{cases}
+            \&data & path = \emptyset \\
+            ref(*ref(data, a_1), (a_2, ..., a_n)) & path = (a_1, ..., a_n)
+        \end{cases}
+
+    Array paths are used for composition of other paths. Array
+    elements are used for recursive path application on result
+    of previous path application.
 
 
 Normalization
@@ -144,26 +175,30 @@ Each path can be normalized - represented as array of strings and integers:
 
 .. math::
 
-    normalize &: Path \rightarrow NPath \\
-    normalize(path) &= \begin{cases}
-        (path) & path \in Integer \cup String \\
-        \emptyset & path \in PArray, \quad
-                    path = \emptyset \\
-        normalize(p_1) \cup normalize((p_2, ..., p_n)) & path \in PArray, \quad
-                                                         path = (p_1, ..., p_n)
-    \end{cases} \\
-    NPath &= Array(Integer \cup String), \quad NPath \subset Path
+    NPath = (a_1, ..., a_n), \quad n \geq 0, \quad a_i \in Integer \cup String
 
-When used as argument to :math:`ref` function, normalized path is
-equivalent to it's original non-normalized form:
+Path normalization is defined as function :math:`norm`:
 
 .. math::
 
-    ref(data, path) &= ref(data, normalized(path)), \\
-    & data \in Data, \quad path \in Path
+    & norm : Path \rightarrow NPath \\
+    & norm(path) = \begin{cases}
+        (path) & path \in Integer \cup String \\
+        \emptyset & path \in PArray, \quad
+                    path = \emptyset \\
+        norm(p_1) \cup norm((p_2, ..., p_n)) & path \in PArray, \quad
+                                               path = (p_1, ..., p_n)
+    \end{cases}
+
+When used as argument to :math:`ref` function, normalized path is
+equivalent to its original non-normalized form:
+
+.. math::
+
+    ref(data, path) = ref(data, norm(path))
 
 These property of normalized path is useful in case of path functions'
-implementations. By normalizing path prior to it's usage, implementation
+implementations. By normalizing path prior to its usage, implementation
 or :math:`ref` can be based on sequential reduction of provided data instead
 of recursive application.
 
@@ -175,8 +210,8 @@ Functions
 
     .. math::
 
-        get &: Data \times Path \rightarrow Data \\
-        get(data, path) &= value
+        & get : Data \times Path \rightarrow Data \\
+        & get(data, path) = value
 
     Function :math:`get` is used for obtaining part of :math:`data` structure
     referenced by :math:`path`.
@@ -199,36 +234,36 @@ Functions
 
     .. math::
 
-        set &: Data \times Path \times Data \rightarrow Data \\
-        set(data, path, value) &= data'
+        & set : Data \times Path \times Data \rightarrow Data \\
+        & set(data, path, value) = data'
 
-    Function :math:`set` is used for creating new data structure :math:`data'`
-    similar to provided :math:`data`. Difference is in part of data
+    Function :math:`set` is used for creating new data structure :math:`data'`.
+    Difference, between :math:`data` and :math:`data'`, is in part of data
     structure referenced by :math:`path`. In :math:`data'` this part is
     replaced with :math:`value`.
 
     Edge cases:
 
-        * array index out of bound
+        * `array index out of bound`
 
             If integer path references array with length less than path,
             additional ``null`` elements are created so that referenced
             array element can be set to provided value.
 
-        * object key not available
+        * `object key not available`
 
             If string path references object which doesn't contain entry
             with key equal to path, new entry is created.
 
-        * path type doesn't match data type
+        * `path type doesn't match data type`
 
             If integer path references data which is not array, data is
-            replaced with empty array after which `array index out of bound`
-            edge case is applied.
+            replaced with empty array and previously described `array index out
+            of bound` edge case is applied.
 
             If string path references data which is not object, data is
-            replaced with empty object after which `object key not available`
-            edge case is applied.
+            replaced with empty object and previously described `object key not
+            available` edge case is applied.
 
     Examples::
 
@@ -245,13 +280,13 @@ Functions
 
     .. math::
 
-        remove &: Data \times Path \rightarrow Data \\
-        remove(data, path) &= data'
+        & remove : Data \times Path \rightarrow Data \\
+        & remove(data, path) = data'
 
     Function :math:`remove` is used for creating new data structure
-    :math:`data'` similar to provided :math:`data`. Difference is in part
-    of data structure referenced by :math:`path`. In :math:`data'` this part
-    is omitted.
+    :math:`data'` based on provided :math:`data`. Difference, between
+    :math:`data` and :math:`data'`, is in part of data structure referenced
+    by :math:`path`. In :math:`data'` this part is omitted.
 
     Edge cases:
 
@@ -277,8 +312,14 @@ Example of commonly used derived function is :math:`change`:
 
 .. math::
 
-    change &: Data \times Path \times (Data \rightarrow Data) \rightarrow Data \\
-    change(data, path, f) &= set(data, path, f(get(data, path)))
+    & change : Data \times Path \times (Data \rightarrow Data) \rightarrow Data \\
+    & change(data, path, f) = set(data, path, f(get(data, path)))
+
+where :math:`f` is arbitrary data transformation function:
+
+.. math::
+
+    f : Data \rightarrow Data
 
 It should be noted that all of these functions are "pure functions" that
 shouldn't make in-place changes of provided data arguments. Implementations
@@ -299,9 +340,10 @@ referencing are:
 * get/set operations
 
     Same path instances can be used for both retrieval and change of referenced
-    data.
+    data. This is result of single path reference resolving algorithm, used
+    as basis for get and set implementation.
 
-* flexible composition
+* flexible path composition
 
     Support for path normalization provides opportunities for composition
     of multiple path parts into single path.
@@ -410,9 +452,9 @@ more functional programming style:
 Comparison to other JSON Data functions
 ---------------------------------------
 
-Problem of referencing (getting/setting) parts of deeply nested complex JSON
-Data structures is not a new one. There exists a lot of different applications
-and libraries that try to provide a solution to this problem.
+Referencing parts of deeply nested complex JSON Data structures is the well
+known problem. There exists a lot of different applications and libraries
+that try to provide a solution to this problem.
 
 To compare previously described JSON Path to alternatives, we can group
 other implementations based on some of theirs significant characteristics:
@@ -459,3 +501,8 @@ other implementations based on some of theirs significant characteristics:
     Some of the notable implementations:
 
         * `ramda.js <https://ramdajs.com/docs/#lens>`_
+
+
+.. footer::
+
+    Thanks to Jakov Krstulovic Opara for review and suggestions.
