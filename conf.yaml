@@ -24,3 +24,4 @@ entries:
   - id: a53f1d2e-2e36-4fb8-b2f8-6e77b1a7c50e
     title: JSON Path
     src: articles/json_path.rst
+    published: "2022-03-16T23:00:00Z"
