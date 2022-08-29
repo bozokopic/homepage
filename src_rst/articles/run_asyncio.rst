@@ -388,7 +388,9 @@ actions are finished. Then loop is closed and `asyncio.run` finishes execution.
 In contrast, `hat.aio.run_asyncio` only cancels single task - one representing
 execution of provided coroutine. Once this task is done
 (because of available result or `asyncio.CancelledError` propagation),
-`hat.aio.run_asyncio` finishes execution without closing loop instance.
+`hat.aio.run_asyncio` finishes execution without closing loop instance (if
+loop instance is not provided as argument, newly created loop is closed
+without canceling other running tasks).
 
 Reasons for different "cleanup" semantics of `hat.aio.run_asyncio` are:
 
