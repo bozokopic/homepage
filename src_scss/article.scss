@@ -1,5 +1,14 @@
-@import 'math';
 
+article > .info {
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: end;
+    gap: 0.2rem;
+
+    & > label {
+        justify-self: end;
+    }
+}
 
 .docutils.literal {
     font-family: monospace;
@@ -9,25 +18,10 @@
     white-space: nowrap;
 }
 
-dl.docinfo {
-    & > dt {
-        font-weight: bold;
-        clear: left;
-        float: left;
-        margin: 0;
-        padding: 0;
-        padding-right: 0.5em;
-
-        &:after {
-            content: ":";
-        }
-    }
-}
-
 footer {
     margin-top: 1.5rem;
     border-top: 1px solid #444444;
-    padding: 0.5rem;
+    padding: 0 0.5rem;
 }
 
 .code                              { background: #f8f8f8; }

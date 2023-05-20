@@ -6,17 +6,14 @@ import collections
 
 entries = collections.deque()
 
-for entry in sorted((i for i in conf['entries'] if 'published' in i),
+for article in sorted(conf['articles'],
                     reverse=True,
                     key=lambda i: i['published']):
-    if not entry['src'].startswith('articles/'):
-        continue
-
-    href = str(Path(entry['src']).with_suffix('.html'))
-    published = entry['published'].split('T', 1)[0]
-    label = f"{published} - {entry['title']}"
-    if 'updated' in entry:
-        updated = entry['updated'].split('T', 1)[0]
+    href = (Path('articles') / article['src']).with_suffix('.html')
+    published = article['published'].split('T', 1)[0]
+    label = f"{published} - {article['title']}"
+    if 'updated' in article:
+        updated = article['updated'].split('T', 1)[0]
         label += f" (updated {updated})"
 
     entries.append((href, label))
@@ -25,7 +22,7 @@ for entry in sorted((i for i in conf['entries'] if 'published' in i),
 <ul>
 % for href, label in entries:
     <li>
-        <a href="${href}">${label}</a>
+        <p><a href="${href}">${label}</a></p>
     </li>
 % endfor
 </ul>

@@ -1,6 +1,5 @@
-docutils ~= 0.17.1
-doit ~= 0.34.1
-hat-json ~= 0.5.4
-lxml ~= 4.7.1
-mako ~= 1.1.6
-pygments ~= 2.11.2
+docutils ~= 0.20.1
+hat-doit ~= 0.12.5
+hat-json ~= 0.5.17
+mako ~= 1.2.4
+pygments ~= 2.15.1

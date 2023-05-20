@@ -192,8 +192,8 @@ data is critical for well behaved system operation.
 For determining behavior of `asyncio` application once it receives SIGINT,
 we will run test applications and look at console output when we press Ctrl+C:
 
-    * 5 seconds after application is run
-    * 15 seconds after application is run
+* 5 seconds after application is run
+* 15 seconds after application is run
 
 Code of test application (`test.py`) is:
 
@@ -394,21 +394,21 @@ without canceling other running tasks).
 
 Reasons for different "cleanup" semantics of `hat.aio.run_asyncio` are:
 
-    * If instance of loop is explicitly provided as `hat.aio.run_asyncio`
-      argument, then it should be kept open for possibility of it's re-usage
-      (usage of single loop instance for multiple `hat.aio.run_asyncio` calls).
+* If instance of loop is explicitly provided as `hat.aio.run_asyncio`
+  argument, then it should be kept open for possibility of it's re-usage
+  (usage of single loop instance for multiple `hat.aio.run_asyncio` calls).
 
-    * By explicitly providing only single coroutine to `hat.aio.run_asyncio`,
-      responsibility of `hat.aio.run_asyncio` is restricted only to
-      execution/canceling of provided coroutine. All other tasks don't have
-      to be corelated to provided coroutine and therefor should not be
-      canceled by `hat.aio.run_asyncio`.
+* By explicitly providing only single coroutine to `hat.aio.run_asyncio`,
+  responsibility of `hat.aio.run_asyncio` is restricted only to
+  execution/canceling of provided coroutine. All other tasks don't have
+  to be corelated to provided coroutine and therefor should not be
+  canceled by `hat.aio.run_asyncio`.
 
-    * It is responsibility of each task (executing coroutine) to manage
-      lifetime of possibly newly spawned sub-tasks. Therefor, if "main"
-      coroutine spawns new tasks, execution of this tasks should be
-      taken into account during "main" coroutine cleanup (usually by
-      canceling and/or awaiting their execution).
+* It is responsibility of each task (executing coroutine) to manage
+  lifetime of possibly newly spawned sub-tasks. Therefor, if "main"
+  coroutine spawns new tasks, execution of this tasks should be
+  taken into account during "main" coroutine cleanup (usually by
+  canceling and/or awaiting their execution).
 
 
 Signals in Windows
@@ -457,31 +457,31 @@ care should be used.
 Most significant restrictions and rules for using Python signal mapping to
 Windows events:
 
-    * Children processes which are to be controlled by events should be
-      created with `subprocess.Popen` 's `CREATE_NEW_PROCESS_GROUP` flag.
-      Creation of new group is mandatory if calling process doesn't
-      want to handle sent event.
+* Children processes which are to be controlled by events should be
+  created with `subprocess.Popen` 's `CREATE_NEW_PROCESS_GROUP` flag.
+  Creation of new group is mandatory if calling process doesn't
+  want to handle sent event.
 
-    * `os.kill` and `subprocess.Process.send_signal` doesn't receive process
-      identification. Instead, process group identification is expected. Process
-      group identification is the same as process identification for which new
-      group was created. Process group identification `0` identifies process
-      group to which current process belongs.
+* `os.kill` and `subprocess.Process.send_signal` doesn't receive process
+  identification. Instead, process group identification is expected. Process
+  group identification is the same as process identification for which new
+  group was created. Process group identification `0` identifies process
+  group to which current process belongs.
 
-    * Raising of SIGKILL is implemented as calling `subprocess.Popen.terminate`
-      which calls `TerminateProcess`.
+* Raising of SIGKILL is implemented as calling `subprocess.Popen.terminate`
+  which calls `TerminateProcess`.
 
-    * `os.kill` and `subprocess.Process.send_signal` support only
-      SIGKILL, CTRL_C_EVENT and CTRL_BREAK_EVENT.
+* `os.kill` and `subprocess.Process.send_signal` support only
+  SIGKILL, CTRL_C_EVENT and CTRL_BREAK_EVENT.
 
-    * When writing signal handlers in Python, CTRL_C_EVENT is notified as
-      SIGINT signal and CTRL_BREAK_EVENT is notified as SIGBREAK signal.
+* When writing signal handlers in Python, CTRL_C_EVENT is notified as
+  SIGINT signal and CTRL_BREAK_EVENT is notified as SIGBREAK signal.
 
-    * CTRL_C_EVENT and CTRL_BREAK_EVENT are dispatched to all processes in
-      process group.
+* CTRL_C_EVENT and CTRL_BREAK_EVENT are dispatched to all processes in
+  process group.
 
-    * Only CTRL_BREAK_EVENT can be raised from one process group targeting
-      other process group.
+* Only CTRL_BREAK_EVENT can be raised from one process group targeting
+  other process group.
 
 
 `hat.aio.run_asyncio` on Windows

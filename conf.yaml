@@ -3,25 +3,20 @@ link: https://bozo.kopic.xyz
 author:
     name: Bozo Kopic
     email: bozo@kopic.xyz
-entries:
-  - id: 8e783e33-74fa-4e62-ab94-ef626823ce8a
-    title: About
+pages:
+  - title: About
     src: index.html
-    published: "2021-07-31T00:00:00Z"
-  - id: e4eb276b-3560-4f72-aec9-b78b069a740a
-    title: Projects
+  - title: Projects
     src: projects.html
-    published: "2021-07-31T00:00:00Z"
-  - id: ccc3ba69-df74-42f1-88ca-1ba9e8d59273
-    title: Articles
+  - title: Articles
     src: articles.html
-    published: "2021-07-31T00:00:00Z"
+articles:
   - id: feef4951-2938-4ddf-b52b-ab35604749e5
     title: Python asyncio application lifetime
-    src: articles/run_asyncio.rst
+    src: run_asyncio.rst
     published: "2020-07-10T00:00:00Z"
     updated: "2022-08-29T11:32:00Z"
   - id: a53f1d2e-2e36-4fb8-b2f8-6e77b1a7c50e
     title: JSON Path
-    src: articles/json_path.rst
+    src: json_path.rst
     published: "2022-03-16T23:00:00Z"
