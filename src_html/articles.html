@@ -2,27 +2,27 @@
 
 <%
 from pathlib import Path
-import collections
 
-entries = collections.deque()
+def format_time(t):
+    return t.split('T', 1)[0]
 
-for article in sorted(conf['articles'],
-                    reverse=True,
-                    key=lambda i: i['published']):
-    href = (Path('articles') / article['src']).with_suffix('.html')
-    published = article['published'].split('T', 1)[0]
-    label = f"{published} - {article['title']}"
-    if 'updated' in article:
-        updated = article['updated'].split('T', 1)[0]
-        label += f" (updated {updated})"
-
-    entries.append((href, label))
+def get_href(article):
+    return (Path('articles') / article['src']).with_suffix('.html')
 %>
 
 <ul>
-% for href, label in entries:
+% for article in conf['articles']:
     <li>
-        <p><a href="${href}">${label}</a></p>
+        <p>
+            <a href="${get_href(article)}">
+                ${format_time(article['published'])}
+                -
+                ${article['title']}
+                % if 'updated' in article:
+                    (updated ${format_time(article['updated'])})
+                % endif
+            </a>
+        </p>
     </li>
 % endfor
 </ul>
