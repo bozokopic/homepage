@@ -26,30 +26,38 @@ code, pre {
 }
 
 pre {
-    background-color: $color-grey-300;
+    background-color: $color-grey-200;
     padding: 0.5em;
     margin: 0.5em;
 }
 
-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+body {
+    & > header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
 
-    h1 {
-        font-size: 1rem;
-    }
+        h1 {
+            font-size: 1rem;
+        }
 
-    nav {
-        & > * {
-            padding-left: 0.5em;
-            white-space: nowrap;
+        nav {
+            & > * {
+                padding-left: 0.5em;
+                white-space: nowrap;
+            }
         }
     }
-}
 
-main {
-    h1 { font-size: 1.5rem; }
-    h2 { font-size: 1.3rem; }
-    h3 { font-size: 1.1rem; }
+    & > main {
+        h1 { font-size: 1.5rem; }
+        h2 { font-size: 1.3rem; }
+        h3 { font-size: 1.1rem; }
+    }
+
+    & > footer {
+        text-align: right;
+        font-size: 0.8rem;
+        margin-top: 0.5rem;
+    }
 }
