@@ -1,5 +1,7 @@
 
 article {
+    line-height: 1.4rem;
+
     & > .info {
         display: grid;
         grid-template-columns: auto auto;
@@ -11,12 +13,20 @@ article {
         }
     }
 
+    pre {
+        line-height: 1.2rem;
+    }
+
     .docutils.literal {
         font-family: monospace;
         white-space: pre-wrap;
     }
     .literal > span.pre {
         white-space: nowrap;
+    }
+
+    .admonition {
+        padding: 0 1rem;
     }
 
     footer {
