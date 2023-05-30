@@ -6,8 +6,8 @@ coroutine based interface. Usage of this library greatly improves development
 process involved in structuring applications with concurrent task executions.
 Nevertheless, this kind of problems require deep understanding of
 underling concepts, even if they are wrapped in user-friendly interface.
-Failure to understand implementation and interface limitations can lead to
-hard to detect bugs.
+Lack in understanding of implementation and interface can lead to
+hard-to-detect bugs.
 
 This article observes behavior of `asyncio.wait_for`_ implementation
 and identifies some of unexpected edge cases. Understanding of
@@ -33,7 +33,7 @@ utility. Individual coroutine implementations do not have to provide timeout
 arguments and implement additional timeout logic. Responsibility of timeout
 functionality is delegated to code calling coroutine which should be canceled
 based on timeout. Because of this inversion of responsibility, execution
-timeout can be applied event to those coroutines which are not initially
+timeout can be applied even to those coroutines which are not initially
 written with timeout operation in mind.
 
 To demonstrate basic usage of `wait_for`, we can utilize `asyncio.sleep`_:
@@ -77,7 +77,7 @@ fail and often result in unwanted behavior.
 
 Because `wait_for` is basic function widely used by other coroutines, it
 is reasonable to expect that it will always successfully propagate
-`CancelledError` and therefor support correct cancellation. Nevertheless, this
+`CancelledError` and therefore support correct cancellation. Nevertheless, this
 is not always the case. Following examples explore conditions when
 `wait_for` stops cancellation propagation.
 
