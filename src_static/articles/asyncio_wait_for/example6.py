@@ -1,37 +1,30 @@
 import asyncio
-import contextlib
 
 
-async def consume(queue: asyncio.Queue):
-    try:
-        while True:
-            try:
-                result = await asyncio.wait_for(queue.get(), timeout=0.5)
-                print(result)
-
-            except asyncio.TimeoutError:
-                print('timeout')
-
-    finally:
-        print('closing consume')
-
-
-async def other_work(delay: float):
-    await asyncio.sleep(delay)
+async def do_work(future: asyncio.Future):
+    await asyncio.sleep(1)
+    return 42
 
 
 async def main():
-    queue = asyncio.Queue()
-    queue.put_nowait(1)
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
 
-    consumer = asyncio.create_task(consume(queue))
+    work_task = asyncio.create_task(do_work(future))
+    wait_task = asyncio.create_task(asyncio.wait_for(work_task, timeout=2))
 
-    await other_work(0)
+    await asyncio.sleep(1)
 
-    consumer.cancel()
+    print('work task done', work_task.done())
+    print('wait task done', wait_task.done())
+    wait_task.cancel()
 
-    with contextlib.suppress(asyncio.CancelledError):
-        await consumer
+    try:
+        result = await wait_task
+        print(result)
+
+    except asyncio.CancelledError:
+        print('cancelled')
 
 
 if __name__ == '__main__':

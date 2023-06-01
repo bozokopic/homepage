@@ -37,7 +37,7 @@ async def main():
     producer = asyncio.create_task(produce(queue))
     consumer = asyncio.create_task(consume(queue))
 
-    await other_work(2.5)
+    await other_work(0)
 
     producer.cancel()
     consumer.cancel()

@@ -15,6 +15,7 @@ articles:
     title: Beware of asyncio.wait_for
     src: asyncio_wait_for.rst
     published: "2023-05-23T16:45:00Z"
+    updated: "2023-06-01T20:20:00Z"
   - id: a53f1d2e-2e36-4fb8-b2f8-6e77b1a7c50e
     title: JSON Path
     src: json_path.rst

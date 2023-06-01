@@ -16,8 +16,12 @@ async def produce(queue: asyncio.Queue):
 async def consume(queue: asyncio.Queue):
     try:
         while True:
-            result = await queue.get()
-            print(result)
+            try:
+                result = await asyncio.wait_for(queue.get(), timeout=0.5)
+                print(result)
+
+            except asyncio.TimeoutError:
+                print('timeout')
 
     finally:
         print('closing consume')

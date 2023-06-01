@@ -36,39 +36,6 @@ based on timeout. Because of this inversion of responsibility, execution
 timeout can be applied even to those coroutines which are not initially
 written with timeout operation in mind.
 
-To demonstrate basic usage of `wait_for`, we can utilize `asyncio.sleep`_:
-
-.. code:: python
-
-    try:
-        await asyncio.wait_for(asyncio.sleep(0.5), timeout=1)
-        print('first finished')
-
-    except TimeoutError:
-        print('first timeout')
-
-    try:
-        await asyncio.wait_for(asyncio.sleep(1), timeout=0.5)
-        print('second finished')
-
-    except TimeoutError:
-        print('second timeout')
-
-At first `wait_for` occurrence, `sleep` is called with delay argument shorter
-than timeout argument. In case of second `wait_for` call, `sleep` is scheduled
-with longer delay than timeout provided to `wait_for`. Taking into account
-these relations between delay and timeout parameters, we can expect following
-output::
-
-    first finished
-    second timeout
-
-`Example 1 source code`_
-
-
-`wait_for` stopping cancellation propagation
---------------------------------------------
-
 `asyncio` provides mechanism for `task cancellation`_ based on exception
 propagation. This generic mechanism enables cancellation of any kind of tasks
 as long as all executing coroutines propagate `asyncio.CancelledError`_.
@@ -83,7 +50,7 @@ is not always the case. Following examples explore conditions when
 
 
 Simple producer/consumer
-''''''''''''''''''''''''
+------------------------
 
 To help us in identifying this edge-cases, we will use simple producer/consumer
 model where synchronization between producer and consumer is based on
@@ -155,11 +122,11 @@ By running this code, we can expect::
     closing produce
     closing consume
 
-`Example 2 source code`_
+`Example 1 source code`_
 
 
 Consumer with `wait_for`
-''''''''''''''''''''''''
+------------------------
 
 To introduce `wait_for`, we can change `consume` from previous example with:
 
@@ -192,11 +159,11 @@ Running this example will result in::
     closing produce
     closing consume
 
-`Example 3 source code`_
+`Example 2 source code`_
 
 
 `wait_for` ignoring cancellation
-''''''''''''''''''''''''''''''''
+--------------------------------
 
 In previous example, if we change `other_work`'s delay to ``0``:
 
@@ -218,11 +185,11 @@ Execution of this example newer finishes because consumer is not successfully
 canceled. Because `wait_for` is only coroutine awaited in `consume`, we
 can assume that `wait_for` did not propagate `CancelledError`.
 
-`Example 4 source code`_
+`Example 3 source code`_
 
 
 Focusing on consumer
-''''''''''''''''''''
+--------------------
 
 To focus only on consumer, we can skip producer's task creation:
 
@@ -243,11 +210,11 @@ Just by removing producer, consumer task is successfully canceled::
 
     closing consume
 
-`Example 5 source code`_
+`Example 4 source code`_
 
 
 Identifying edge-case
-'''''''''''''''''''''
+---------------------
 
 Because producer and consumer only interact through queue, we can expect that
 queue state is significant in occurrence of unwanted behavior. To test this
@@ -276,30 +243,35 @@ occur in real-word scenarios. Because of this, great care must be taken when
 `wait_for` is used, taking into account behavior of provided awaitable and
 possible cancellation timing of task executing `wait_for`.
 
-`Example 6 source code`_
+`Example 5 source code`_
 
 
-Alternative implementation
---------------------------
+When to expect unsuccessful cancellation
+----------------------------------------
 
-`hat-aio`_ implements `hat.aio.wait_for`_ which can be used as drop-in
-replacement for `asyncio.wait_for`_. Together with propagation of
-`CancelledError`, this implementation provides
-`hat.aio.CancelledWithResultError`_. `CancelledWithResultError` extends
-`CancelledError` with additional result/exception. This result/exception
-contains awaitable's result in case when result is available and `wait_for`
-is cancelled at the same time. Because this exception is also `CancelledError`,
-all existing code catching `CancelledError` will continue to work.
-In cases where obtaining result is necessary, even when `CancelledError` is
-raised (e.g. result is associated with resource which requires explicit
-cleanup), `CancelledWithResultError` can be used.
+As previous examples demonstrated, slight modifications in delay/timeout
+parameters can produce significant functional changes. These parameters
+are often provided as part of end-user defined configuration which makes
+their values additionally volatile.
 
+Also, order of actions, which at first sight should not have significant
+impact, can also cause failure of `wait_for` cancellation.
 
-`asyncio.wait_for` example
-''''''''''''''''''''''''''
+Taking into account this causes, it is hard to describe single universal
+case when to expect unsuccessful cancellation. That said, most significant
+behavior, which impacts cancellation propagation is:
 
-In this example, awaitable produces result at the same time waiting task
-is canceled:
+    When task running `wait_for` is cancelled at the "same time" as
+    awaitable's result is made available, `wait_for` can return
+    awaitable's result instead of rising `CancelledError`.
+
+In this case, concept of "same time" is kind of vague because of
+sequential execution of concurrent tasks. Actions, such as task cancellation
+or task finishing with result, are usually not instantaneous (executed at the
+moment `cancel` is called). This actions can result in appending items
+to event loop and delegating action execution to future loop iterations.
+
+To demonstrate stated edge-case, following example is provided:
 
 .. code:: python
 
@@ -332,13 +304,37 @@ Running this example results in::
     wait task done False
     42
 
-`Example 7 source code`_
+Here we can see that both `do_work` and main task are sleeping for
+1 second, after which `wait_task` is cancelled. Although, `cancel` method is
+called, awaiting `wait_task` results in `do_work`'s result instead of
+raising `CancelledError`.
+
+What is also important to notice is that both `work_task` and `wait_task`
+are not done at the time of calling `cancel` method. This tells us that
+we cannot reason about cancel success based on current state of these two
+tasks.
+
+`Example 6 source code`_
 
 
-`hat.aio.wait_for` example
-''''''''''''''''''''''''''
+Alternative implementation
+--------------------------
 
-If we replace `asyncio.wait_for` with `hat.aio.wait_for`:
+To mitigate problems which can occur when using `asyncio.wait_for`, `hat-aio`_
+implements `hat.aio.wait_for`_ which can be used as drop-in
+replacement for `asyncio.wait_for`_. Together with propagation of
+`CancelledError`, this implementation provides
+`hat.aio.CancelledWithResultError`_. `CancelledWithResultError` extends
+`CancelledError` with additional result/exception. This result/exception
+contains awaitable's result in case when result is available and `wait_for`
+is cancelled at the same time. Because this exception is also `CancelledError`,
+all existing code catching `CancelledError` will continue to work.
+In cases where obtaining result is necessary, even when `CancelledError` is
+raised (e.g. result is associated with resource which requires explicit
+cleanup), `CancelledWithResultError` can be used.
+
+In the previous example, if we replace `asyncio.wait_for` with
+`hat.aio.wait_for`:
 
 .. code:: python
 
@@ -364,7 +360,7 @@ which results is::
     wait task done False
     cancelled with result 42
 
-`Example 8 source code`_
+`Example 7 source code`_
 
 
 .. _asyncio: https://docs.python.org/3/library/asyncio.html
@@ -386,4 +382,3 @@ which results is::
 .. _Example 5 source code: asyncio_wait_for/example5.py
 .. _Example 6 source code: asyncio_wait_for/example6.py
 .. _Example 7 source code: asyncio_wait_for/example7.py
-.. _Example 8 source code: asyncio_wait_for/example8.py

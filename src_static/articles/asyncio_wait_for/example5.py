@@ -22,6 +22,7 @@ async def other_work(delay: float):
 
 async def main():
     queue = asyncio.Queue()
+    queue.put_nowait(1)
 
     consumer = asyncio.create_task(consume(queue))
 

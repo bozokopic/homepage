@@ -1,4 +1,5 @@
 import asyncio
+import hat.aio
 
 
 async def do_work(future: asyncio.Future):
@@ -11,7 +12,7 @@ async def main():
     future = loop.create_future()
 
     work_task = asyncio.create_task(do_work(future))
-    wait_task = asyncio.create_task(asyncio.wait_for(work_task, timeout=2))
+    wait_task = asyncio.create_task(hat.aio.wait_for(work_task, timeout=2))
 
     await asyncio.sleep(1)
 
@@ -23,8 +24,8 @@ async def main():
         result = await wait_task
         print(result)
 
-    except asyncio.CancelledError:
-        print('cancelled')
+    except hat.aio.CancelledWithResultError as e:
+        print('cancelled with result', e.result)
 
 
 if __name__ == '__main__':
