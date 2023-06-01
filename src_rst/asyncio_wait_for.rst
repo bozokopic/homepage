@@ -239,7 +239,7 @@ provided awaitable's behavior which can even result in stopping
 `CancelledError` propagation. To accomplish this, we have used
 ``asyncio.sleep(0)`` as a way to schedule precise task cancellation depending
 on task creation. Same sequence of `create_task` and `cancel` calls can easily
-occur in real-word scenarios. Because of this, great care must be taken when
+occur in real-world scenarios. Because of this, great care must be taken when
 `wait_for` is used, taking into account behavior of provided awaitable and
 possible cancellation timing of task executing `wait_for`.
 
