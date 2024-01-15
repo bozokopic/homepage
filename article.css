@@ -1,0 +1,157 @@
+article {
+  line-height: 1.4rem;
+}
+article > main {
+  font-family: serif;
+}
+article > .info {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: end;
+  gap: 0.2rem;
+}
+article > .info > label {
+  justify-self: end;
+}
+article pre {
+  line-height: 1.2rem;
+}
+article .docutils.literal {
+  font-family: monospace;
+  white-space: pre-wrap;
+}
+article .literal > span.pre {
+  white-space: nowrap;
+}
+article .admonition {
+  padding: 0 1rem;
+}
+article footer {
+  margin-top: 1.5rem;
+  border-top: 1px solid #444444;
+  padding: 0 0.5rem;
+}
+article .code {
+  background: #f8f8f8;
+}
+article .code .comment {
+  color: #008800;
+  font-style: italic;
+}
+article .code .error {
+  border: 1px solid #FF0000;
+}
+article .code .generic.deleted {
+  color: #A00000;
+}
+article .code .generic.emph {
+  font-style: italic;
+}
+article .code .generic.error {
+  color: #FF0000;
+}
+article .code .generic.heading {
+  color: #000080;
+  font-weight: bold;
+}
+article .code .generic.inserted {
+  color: #00A000;
+}
+article .code .generic.output {
+  color: #808080;
+}
+article .code .generic.prompt {
+  color: #000080;
+  font-weight: bold;
+}
+article .code .generic.strong {
+  font-weight: bold;
+}
+article .code .generic.subheading {
+  color: #800080;
+  font-weight: bold;
+}
+article .code .generic.traceback {
+  color: #0040D0;
+}
+article .code .keyword {
+  color: #AA22FF;
+  font-weight: bold;
+}
+article .code .keyword.pseudo {
+  font-weight: normal;
+}
+article .code .literal.number {
+  color: #666666;
+}
+article .code .literal.string {
+  color: #BB4444;
+}
+article .code .literal.string.doc {
+  color: #BB4444;
+  font-style: italic;
+}
+article .code .literal.string.escape {
+  color: #BB6622;
+  font-weight: bold;
+}
+article .code .literal.string.interpol {
+  color: #BB6688;
+  font-weight: bold;
+}
+article .code .literal.string.other {
+  color: #008000;
+}
+article .code .literal.string.regex {
+  color: #BB6688;
+}
+article .code .literal.string.symbol {
+  color: #B8860B;
+}
+article .code .name.attribute {
+  color: #BB4444;
+}
+article .code .name.builtin {
+  color: #AA22FF;
+}
+article .code .name.class {
+  color: #0000FF;
+}
+article .code .name.constant {
+  color: #880000;
+}
+article .code .name.decorator {
+  color: #AA22FF;
+}
+article .code .name.entity {
+  color: #999999;
+  font-weight: bold;
+}
+article .code .name.exception {
+  color: #D2413A;
+  font-weight: bold;
+}
+article .code .name.function {
+  color: #00A000;
+}
+article .code .name.label {
+  color: #A0A000;
+}
+article .code .name.namespace {
+  color: #0000FF;
+  font-weight: bold;
+}
+article .code .name.tag {
+  color: #008000;
+  font-weight: bold;
+}
+article .code .name.variable {
+  color: #B8860B;
+}
+article .code .operator {
+  color: #666666;
+}
+article .code .operator.word {
+  color: #AA22FF;
+  font-weight: bold;
+}

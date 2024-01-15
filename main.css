@@ -1,0 +1,47 @@
+html, body {
+  font-family: sans-serif;
+}
+
+body {
+  max-width: 50rem;
+  padding: 1rem;
+  margin: 0 auto;
+}
+
+code, pre {
+  font-family: monospace;
+}
+
+pre {
+  background-color: #eeeeee;
+  padding: 0.5em;
+  margin: 0.5em;
+}
+
+body > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+body > header h1 {
+  font-size: 1rem;
+}
+body > header nav > * {
+  padding-left: 0.5em;
+  white-space: nowrap;
+}
+body > main h1 {
+  font-size: 1.5rem;
+}
+body > main h2 {
+  font-size: 1.3rem;
+}
+body > main h3 {
+  font-size: 1.1rem;
+}
+body > footer {
+  text-align: right;
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+  clear: both;
+}
