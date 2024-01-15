@@ -2,6 +2,10 @@
 article {
     line-height: 1.4rem;
 
+    & > main {
+        font-family: serif;
+    }
+
     & > .info {
         display: grid;
         grid-template-columns: auto auto;

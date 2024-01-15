@@ -105,6 +105,7 @@ def _build_page(page):
 
     params = {'conf': conf,
               'title': page['title'],
+              'page': page['title'],
               'root_prefix': '../' * _get_path_depth(build_dir, dst_path)}
 
     _build_mako(src_path=src_path,
@@ -118,6 +119,7 @@ def _build_article(article):
 
     params = {'conf': conf,
               'title': article['title'],
+              'page': 'Articles',
               'root_prefix': '../' * _get_path_depth(build_dir, dst_path),
               'published': article.get('published'),
               'updated': article.get('updated'),
