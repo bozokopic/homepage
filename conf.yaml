@@ -11,6 +11,10 @@ pages:
   - title: Articles
     src: articles.html
 articles:
+  - id: 447ad11d-f6ec-436f-87fb-d708a26f4600
+    title: asyncio resource management
+    src: asyncio_resource.rst
+    published: "2024-08-31T18:56:00Z"
   - id: e2a6f58e-a9c5-46b1-82d4-3b67a1a8d063
     title: Beware of asyncio.wait_for
     src: asyncio_wait_for.rst

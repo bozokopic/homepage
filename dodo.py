@@ -1,5 +1,4 @@
 from pathlib import Path
-import subprocess
 
 import docutils.core
 import docutils.io
@@ -15,7 +14,6 @@ DOIT_CONFIG = common.init(default_tasks=['build'])
 build_dir = Path('build')
 src_html_dir = Path('src_html')
 src_rst_dir = Path('src_rst')
-src_scss_dir = Path('src_scss')
 src_static_dir = Path('src_static')
 
 article_tmpl_path = src_html_dir / '_article.html'
@@ -35,7 +33,6 @@ def task_build():
             'task_dep': ['pages',
                          'articles',
                          'feed',
-                         'sass',
                          'static']}
 
 
@@ -65,21 +62,6 @@ def task_feed():
             'task_dep': ['pages']}
 
 
-def task_sass():
-    """Build sass"""
-    for src_path in src_scss_dir.rglob('*.scss'):
-        if src_path.name.startswith('_'):
-            continue
-
-        dst_path = (build_dir /
-                    src_path.relative_to(src_scss_dir).with_suffix('.css'))
-
-        yield {'name': str(dst_path),
-               'actions': [(_build_scss, [src_path, dst_path])],
-               'targets': [dst_path],
-               'task_dep': ['node_modules']}
-
-
 def task_static():
     """Copy static files"""
     for src_path in src_static_dir.rglob('*'):
@@ -92,11 +74,6 @@ def task_static():
                'actions': [(common.mkdir_p, [dst_path.parent]),
                            (common.cp_r, [src_path, dst_path])],
                'targets': [dst_path]}
-
-
-def task_node_modules():
-    """Install node_modules"""
-    return {'actions': ['yarn install --silent']}
 
 
 def _build_page(page):
@@ -164,13 +141,6 @@ def _build_feed():
                     f'</entry>\n')
 
         f.write('</feed>\n')
-
-
-def _build_scss(src_path, dst_path):
-    dst_path.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(['node_modules/.bin/sass', '--no-source-map',
-                    str(src_path), str(dst_path)],
-                   check=True)
 
 
 def _build_mako(src_path, dst_path, params):

@@ -30,13 +30,23 @@ article {
     }
 
     .admonition {
-        padding: 0 1rem;
+        padding: 0.1rem 1rem;
+        background: var(--color-grey-200);
+
+        & > .admonition-title {
+            font-weight: 600;
+        }
     }
 
     footer {
         margin-top: 1.5rem;
         border-top: 1px solid #444444;
         padding: 0 0.5rem;
+    }
+
+    h1, h2, h3 {
+        margin: 2rem 0 1.5rem 0;
+        font-family: sans-serif;
     }
 
     .code                              { background: #f8f8f8; }
