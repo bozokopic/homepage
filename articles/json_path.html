@@ -1,0 +1,1980 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="autor" content="Bozo Kopic" />
+    <meta name="description" content="Bozo Kopic homepage" />
+    <title>JSON Path</title>
+    <link href="../index.xml" type="application/atom+xml" rel="alternate" />
+    <link href="../main.css" rel="stylesheet" />
+    
+    <link href="../article.css" rel="stylesheet">
+
+</head>
+<body>
+    <header>
+        <h1>Bozo Kopic - Articles</h1>
+        <nav>
+            <span>[ <a href="../index.html">About</a> ]</span>
+            <span>[ <a href="../projects.html">Projects</a> ]</span>
+            <span>[ <a href="../articles.html">Articles</a> ]</span>
+            <span>[ <a href="../index.xml">Feed</a> ]</span>
+        </nav>
+    </header>
+    <main>
+        
+
+
+
+
+<article>
+
+<div class="info">
+    <label>Published:</label>
+    <div>2022-03-16 23:00:00 UTC</div>
+</div>
+
+<main id="json-path">
+<h1 class="title">JSON Path</h1>
+<p>Today, <a class="reference external" href="https://www.json.org">JSON</a> is widely used format for representing data structures. Together
+with encoding/decoding rules, it specifies data types which are supported by
+most of modern programming languages and platforms.</p>
+<p>JSON Path provides basic functions for referencing and manipulating
+deeply nested JSON data structure.</p>
+<p><a class="reference external" href="https://hat-open.com">Hat Open</a> provides libraries implementing this functionality:</p>
+<ul class="simple">
+<li><p>Python - <a class="reference external" href="https://github.com/hat-open/hat-json">hat-json</a></p></li>
+<li><p>JavaScript - <a class="reference external" href="https://github.com/hat-open/hat-util">&#64;hat-open/util</a></p></li>
+</ul>
+<section id="definitions">
+<h2>Definitions</h2>
+<p>Following definitions describe JSON Data, JSON Path and operations based on
+these data types. Mathematical notation is used only as &quot;neutral&quot; tool to
+describe data structures and operations without usage of any particular
+programming language or paradigm. Definitions themselves are not strict - they
+should be taken as guidelines to implementation of JSON Path libraries.</p>
+<section id="data">
+<h3>Data</h3>
+<p>JSON Data types can be defined as set <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math>:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>=</mo>
+  <mi>C</mi>
+  <mi>o</mi>
+  <mi>n</mi>
+  <mi>s</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mi>n</mi>
+  <mi>t</mi>
+  <mo>∪</mo>
+  <mi>N</mi>
+  <mi>u</mi>
+  <mi>m</mi>
+  <mi>b</mi>
+  <mi>e</mi>
+  <mi>r</mi>
+  <mo>∪</mo>
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+  <mo>∪</mo>
+  <mi>A</mi>
+  <mi>r</mi>
+  <mi>r</mi>
+  <mi>a</mi>
+  <mi>y</mi>
+  <mo>∪</mo>
+  <mi>O</mi>
+  <mi>b</mi>
+  <mi>j</mi>
+  <mi>e</mi>
+  <mi>c</mi>
+  <mi>t</mi>
+</math>
+</div>
+<p>where:</p>
+<ul>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>C</mi>
+  <mi>o</mi>
+  <mi>n</mi>
+  <mi>s</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mi>n</mi>
+  <mi>t</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>C</mi>
+  <mi>o</mi>
+  <mi>n</mi>
+  <mi>s</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mi>n</mi>
+  <mi>t</mi>
+  <mo>=</mo>
+  <mo>{</mo>
+  <mi>n</mi>
+  <mi>u</mi>
+  <mi>l</mi>
+  <mi>l</mi>
+  <mo>,</mo>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>u</mi>
+  <mi>e</mi>
+  <mo>,</mo>
+  <mi>f</mi>
+  <mi>a</mi>
+  <mi>l</mi>
+  <mi>s</mi>
+  <mi>e</mi>
+  <mo>}</mo>
+</math>
+</div>
+<p>Constant values represented with literals <span class="docutils literal">null</span>, <span class="docutils literal">true</span> and <span class="docutils literal">false</span>.</p>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>N</mi>
+  <mi>u</mi>
+  <mi>m</mi>
+  <mi>b</mi>
+  <mi>e</mi>
+  <mi>r</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>N</mi>
+  <mi>u</mi>
+  <mi>m</mi>
+  <mi>b</mi>
+  <mi>e</mi>
+  <mi>r</mi>
+  <mo>=</mo>
+  <mi>ℝ</mi>
+</math>
+</div>
+<p>Real numbers (JSON doesn't distinguish between integers and floating point
+values).</p>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+  <mo>=</mo>
+  <mo stretchy="false">(</mo>
+  <msub>
+    <mi>c</mi>
+    <mn>1</mn>
+  </msub>
+  <mo>,</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>,</mo>
+  <msub>
+    <mi>c</mi>
+    <mi>n</mi>
+  </msub>
+  <mo stretchy="false">)</mo>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <mi>n</mi>
+  <mo>≥</mo>
+  <mn>0</mn>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <msub>
+    <mi>c</mi>
+    <mi>i</mi>
+  </msub>
+  <mo>∈</mo>
+  <mtext>Unicode characters</mtext>
+</math>
+</div>
+<p>Sequence of zero or more Unicode characters including additional escaped
+sequences.</p>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>A</mi>
+  <mi>r</mi>
+  <mi>r</mi>
+  <mi>a</mi>
+  <mi>y</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>A</mi>
+  <mi>r</mi>
+  <mi>r</mi>
+  <mi>a</mi>
+  <mi>y</mi>
+  <mo>=</mo>
+  <mo stretchy="false">(</mo>
+  <msub>
+    <mi>a</mi>
+    <mn>1</mn>
+  </msub>
+  <mo>,</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>,</mo>
+  <msub>
+    <mi>a</mi>
+    <mi>n</mi>
+  </msub>
+  <mo stretchy="false">)</mo>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <mi>n</mi>
+  <mo>≥</mo>
+  <mn>0</mn>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <msub>
+    <mi>a</mi>
+    <mi>i</mi>
+  </msub>
+  <mo>∈</mo>
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math>
+</div>
+<p>Ordered set of zero or more elements which are themselves JSON Data.</p>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>O</mi>
+  <mi>b</mi>
+  <mi>j</mi>
+  <mi>e</mi>
+  <mi>c</mi>
+  <mi>t</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>O</mi>
+  <mi>b</mi>
+  <mi>j</mi>
+  <mi>e</mi>
+  <mi>c</mi>
+  <mi>t</mi>
+  <mo>=</mo>
+  <mo>{</mo>
+  <mo stretchy="false">(</mo>
+  <msub>
+    <mi>k</mi>
+    <mn>1</mn>
+  </msub>
+  <mo>,</mo>
+  <msub>
+    <mi>v</mi>
+    <mn>1</mn>
+  </msub>
+  <mo stretchy="false">)</mo>
+  <mo>,</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>,</mo>
+  <mo stretchy="false">(</mo>
+  <msub>
+    <mi>k</mi>
+    <mi>n</mi>
+  </msub>
+  <mo>,</mo>
+  <msub>
+    <mi>v</mi>
+    <mi>n</mi>
+  </msub>
+  <mo stretchy="false">)</mo>
+  <mo>}</mo>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <mi>n</mi>
+  <mo>≥</mo>
+  <mn>0</mn>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <msub>
+    <mi>k</mi>
+    <mi>i</mi>
+  </msub>
+  <mo>∈</mo>
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <msub>
+    <mi>v</mi>
+    <mi>i</mi>
+  </msub>
+  <mo>∈</mo>
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math>
+</div>
+<p>Associative sequence of key/value pairs where keys are strings and
+values are one of JSON Data</p>
+</li>
+</ul>
+</section>
+<section id="path">
+<h3>Path</h3>
+<p>JSON Path is reference to part of composite JSON data. It is itself
+represented as JSON Data and can be defined as set <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>P</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+</math>:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>P</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo>=</mo>
+  <mi>I</mi>
+  <mi>n</mi>
+  <mi>t</mi>
+  <mi>e</mi>
+  <mi>g</mi>
+  <mi>e</mi>
+  <mi>r</mi>
+  <mo>∪</mo>
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+  <mo>∪</mo>
+  <mi>P</mi>
+  <mi>A</mi>
+  <mi>r</mi>
+  <mi>r</mi>
+  <mi>a</mi>
+  <mi>y</mi>
+</math>
+</div>
+<p>where:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mtable class="ams-align" displaystyle="true">
+    <mtr>
+      <mtd>
+        <mi>I</mi>
+        <mi>n</mi>
+        <mi>t</mi>
+        <mi>e</mi>
+        <mi>g</mi>
+        <mi>e</mi>
+        <mi>r</mi>
+      </mtd>
+      <mtd>
+        <mo>=</mo>
+        <msub>
+          <mi>ℕ</mi>
+          <mn>0</mn>
+        </msub>
+      </mtd>
+    </mtr>
+    <mtr>
+      <mtd>
+        <mi>P</mi>
+        <mi>A</mi>
+        <mi>r</mi>
+        <mi>r</mi>
+        <mi>a</mi>
+        <mi>y</mi>
+      </mtd>
+      <mtd>
+        <mo>=</mo>
+        <mo stretchy="false">(</mo>
+        <msub>
+          <mi>a</mi>
+          <mn>1</mn>
+        </msub>
+        <mo>,</mo>
+        <mo>.</mo>
+        <mo>.</mo>
+        <mo>.</mo>
+        <mo>,</mo>
+        <msub>
+          <mi>a</mi>
+          <mi>n</mi>
+        </msub>
+        <mo stretchy="false">)</mo>
+        <mo>,</mo>
+        <mspace width="1em"></mspace>
+        <mi>n</mi>
+        <mo>≥</mo>
+        <mn>0</mn>
+        <mo>,</mo>
+        <mspace width="1em"></mspace>
+        <msub>
+          <mi>a</mi>
+          <mi>i</mi>
+        </msub>
+        <mo>∈</mo>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+      </mtd>
+    </mtr>
+  </mtable>
+</math>
+</div>
+<p>In following definitions, we will use operator <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>&amp;</mi>
+</math> as reference to
+data and operator <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mo>*</mo>
+</math> as value of referenced data.</p>
+<p>Algorithm, used as basis for resolving path references, can be represented
+with function <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>f</mi>
+</math>:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>f</mi>
+  <mo stretchy="false">(</mo>
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo stretchy="false">)</mo>
+  <mo>=</mo>
+  <mrow>
+    <mo rspace="0.17em">{</mo>
+    <mtable columnalign="left" class="cases">
+      <mtr>
+        <mtd>
+          <mi>r</mi>
+          <mi>e</mi>
+          <msub>
+            <mi>f</mi>
+            <mrow>
+              <mi>i</mi>
+              <mi>n</mi>
+              <mi>t</mi>
+            </mrow>
+          </msub>
+          <mo stretchy="false">(</mo>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>,</mo>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo stretchy="false">)</mo>
+        </mtd>
+        <mtd>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>∈</mo>
+          <mi>I</mi>
+          <mi>n</mi>
+          <mi>t</mi>
+          <mi>e</mi>
+          <mi>g</mi>
+          <mi>e</mi>
+          <mi>r</mi>
+        </mtd>
+      </mtr>
+      <mtr>
+        <mtd>
+          <mi>r</mi>
+          <mi>e</mi>
+          <msub>
+            <mi>f</mi>
+            <mrow>
+              <mi>s</mi>
+              <mi>t</mi>
+              <mi>r</mi>
+            </mrow>
+          </msub>
+          <mo stretchy="false">(</mo>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>,</mo>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo stretchy="false">)</mo>
+        </mtd>
+        <mtd>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>∈</mo>
+          <mi>S</mi>
+          <mi>t</mi>
+          <mi>r</mi>
+          <mi>i</mi>
+          <mi>n</mi>
+          <mi>g</mi>
+        </mtd>
+      </mtr>
+      <mtr>
+        <mtd>
+          <mi>r</mi>
+          <mi>e</mi>
+          <msub>
+            <mi>f</mi>
+            <mrow>
+              <mi>a</mi>
+              <mi>r</mi>
+              <mi>r</mi>
+            </mrow>
+          </msub>
+          <mo stretchy="false">(</mo>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>,</mo>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo stretchy="false">)</mo>
+        </mtd>
+        <mtd>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>∈</mo>
+          <mi>P</mi>
+          <mi>A</mi>
+          <mi>r</mi>
+          <mi>r</mi>
+          <mi>a</mi>
+          <mi>y</mi>
+        </mtd>
+      </mtr>
+    </mtable>
+  </mrow>
+</math>
+</div>
+<p>where:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>∈</mo>
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo>∈</mo>
+  <mi>P</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+</math>
+</div>
+<p>Usage of different data types as paths, enables one to reference data in
+different data structures:</p>
+<ul>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo>∈</mo>
+  <mi>I</mi>
+  <mi>n</mi>
+  <mi>t</mi>
+  <mi>e</mi>
+  <mi>g</mi>
+  <mi>e</mi>
+  <mi>r</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>r</mi>
+  <mi>e</mi>
+  <msub>
+    <mi>f</mi>
+    <mrow>
+      <mi>i</mi>
+      <mi>n</mi>
+      <mi>t</mi>
+    </mrow>
+  </msub>
+  <mo stretchy="false">(</mo>
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo stretchy="false">)</mo>
+  <mo>=</mo>
+  <mrow>
+    <mo rspace="0.17em">{</mo>
+    <mtable columnalign="left" class="cases">
+      <mtr>
+        <mtd>
+          <mi>&amp;</mi>
+          <msub>
+            <mi>a</mi>
+            <mrow>
+              <mi>p</mi>
+              <mi>a</mi>
+              <mi>t</mi>
+              <mi>h</mi>
+              <mo>+</mo>
+              <mn>1</mn>
+            </mrow>
+          </msub>
+        </mtd>
+        <mtd>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>∈</mo>
+          <mi>A</mi>
+          <mi>r</mi>
+          <mi>r</mi>
+          <mi>a</mi>
+          <mi>y</mi>
+          <mo>,</mo>
+          <mspace width="1em"></mspace>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>=</mo>
+          <mo stretchy="false">(</mo>
+          <msub>
+            <mi>a</mi>
+            <mn>1</mn>
+          </msub>
+          <mo>,</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>,</mo>
+          <msub>
+            <mi>a</mi>
+            <mi>n</mi>
+          </msub>
+          <mo stretchy="false">)</mo>
+          <mo>,</mo>
+          <mspace width="1em"></mspace>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>&lt;</mo>
+          <mi>n</mi>
+        </mtd>
+      </mtr>
+      <mtr>
+        <mtd>
+          <mi>&amp;</mi>
+          <mi>n</mi>
+          <mi>u</mi>
+          <mi>l</mi>
+          <mi>l</mi>
+        </mtd>
+        <mtd>
+          <mtext>otherwise</mtext>
+        </mtd>
+      </mtr>
+    </mtable>
+  </mrow>
+</math>
+</div>
+<p>Integer paths are used for referencing elements of array. If
+referenced element doesn't exist or provided data is not an array,
+neutral <span class="docutils literal">null</span> element is referenced.</p>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo>∈</mo>
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>r</mi>
+  <mi>e</mi>
+  <msub>
+    <mi>f</mi>
+    <mrow>
+      <mi>s</mi>
+      <mi>t</mi>
+      <mi>r</mi>
+    </mrow>
+  </msub>
+  <mo stretchy="false">(</mo>
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo stretchy="false">)</mo>
+  <mo>=</mo>
+  <mrow>
+    <mo rspace="0.17em">{</mo>
+    <mtable columnalign="left" class="cases">
+      <mtr>
+        <mtd>
+          <mi>&amp;</mi>
+          <msub>
+            <mi>v</mi>
+            <mi>i</mi>
+          </msub>
+        </mtd>
+        <mtd>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>∈</mo>
+          <mi>O</mi>
+          <mi>b</mi>
+          <mi>j</mi>
+          <mi>e</mi>
+          <mi>c</mi>
+          <mi>t</mi>
+          <mo>,</mo>
+          <mspace width="1em"></mspace>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>=</mo>
+          <mo>{</mo>
+          <mo stretchy="false">(</mo>
+          <msub>
+            <mi>k</mi>
+            <mn>1</mn>
+          </msub>
+          <mo>,</mo>
+          <msub>
+            <mi>v</mi>
+            <mn>1</mn>
+          </msub>
+          <mo stretchy="false">)</mo>
+          <mo>,</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>,</mo>
+          <mo stretchy="false">(</mo>
+          <msub>
+            <mi>k</mi>
+            <mi>n</mi>
+          </msub>
+          <mo>,</mo>
+          <msub>
+            <mi>v</mi>
+            <mi>n</mi>
+          </msub>
+          <mo stretchy="false">)</mo>
+          <mo>}</mo>
+          <mo>,</mo>
+          <mspace width="1em"></mspace>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>=</mo>
+          <msub>
+            <mi>k</mi>
+            <mi>i</mi>
+          </msub>
+        </mtd>
+      </mtr>
+      <mtr>
+        <mtd>
+          <mi>&amp;</mi>
+          <mi>n</mi>
+          <mi>u</mi>
+          <mi>l</mi>
+          <mi>l</mi>
+        </mtd>
+        <mtd>
+          <mtext>otherwise</mtext>
+        </mtd>
+      </mtr>
+    </mtable>
+  </mrow>
+</math>
+</div>
+<p>String paths reference object entries based on object's key values.
+If referenced key doesn't exist or provided data is not an object,
+neutral <span class="docutils literal">null</span> element is referenced.</p>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo>∈</mo>
+  <mi>P</mi>
+  <mi>A</mi>
+  <mi>r</mi>
+  <mi>r</mi>
+  <mi>a</mi>
+  <mi>y</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>r</mi>
+  <mi>e</mi>
+  <msub>
+    <mi>f</mi>
+    <mrow>
+      <mi>a</mi>
+      <mi>r</mi>
+      <mi>r</mi>
+    </mrow>
+  </msub>
+  <mo stretchy="false">(</mo>
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo stretchy="false">)</mo>
+  <mo>=</mo>
+  <mrow>
+    <mo rspace="0.17em">{</mo>
+    <mtable columnalign="left" class="cases">
+      <mtr>
+        <mtd>
+          <mi>&amp;</mi>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+        </mtd>
+        <mtd>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>=</mo>
+          <mi>∅</mi>
+        </mtd>
+      </mtr>
+      <mtr>
+        <mtd>
+          <mi>r</mi>
+          <mi>e</mi>
+          <mi>f</mi>
+          <mo stretchy="false">(</mo>
+          <mo>*</mo>
+          <mi>r</mi>
+          <mi>e</mi>
+          <mi>f</mi>
+          <mo stretchy="false">(</mo>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>,</mo>
+          <msub>
+            <mi>a</mi>
+            <mn>1</mn>
+          </msub>
+          <mo stretchy="false">)</mo>
+          <mo>,</mo>
+          <mo stretchy="false">(</mo>
+          <msub>
+            <mi>a</mi>
+            <mn>2</mn>
+          </msub>
+          <mo>,</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>,</mo>
+          <msub>
+            <mi>a</mi>
+            <mi>n</mi>
+          </msub>
+          <mo stretchy="false">)</mo>
+          <mo stretchy="false">)</mo>
+        </mtd>
+        <mtd>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>=</mo>
+          <mo stretchy="false">(</mo>
+          <msub>
+            <mi>a</mi>
+            <mn>1</mn>
+          </msub>
+          <mo>,</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>,</mo>
+          <msub>
+            <mi>a</mi>
+            <mi>n</mi>
+          </msub>
+          <mo stretchy="false">)</mo>
+        </mtd>
+      </mtr>
+    </mtable>
+  </mrow>
+</math>
+</div>
+<p>Array paths are used for composition of other paths. Array
+elements are used for recursive path application on result
+of previous path application.</p>
+</li>
+</ul>
+</section>
+<section id="normalization">
+<h3>Normalization</h3>
+<p>Each path can be normalized - represented as array of strings and integers:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>N</mi>
+  <mi>P</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo>=</mo>
+  <mo stretchy="false">(</mo>
+  <msub>
+    <mi>a</mi>
+    <mn>1</mn>
+  </msub>
+  <mo>,</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>,</mo>
+  <msub>
+    <mi>a</mi>
+    <mi>n</mi>
+  </msub>
+  <mo stretchy="false">)</mo>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <mi>n</mi>
+  <mo>≥</mo>
+  <mn>0</mn>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <msub>
+    <mi>a</mi>
+    <mi>i</mi>
+  </msub>
+  <mo>∈</mo>
+  <mi>I</mi>
+  <mi>n</mi>
+  <mi>t</mi>
+  <mi>e</mi>
+  <mi>g</mi>
+  <mi>e</mi>
+  <mi>r</mi>
+  <mo>∪</mo>
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+</math>
+</div>
+<p>Path normalization is defined as function <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>n</mi>
+  <mi>o</mi>
+  <mi>r</mi>
+  <mi>m</mi>
+</math>:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mtable class="ams-align" displaystyle="true">
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>n</mi>
+        <mi>o</mi>
+        <mi>r</mi>
+        <mi>m</mi>
+        <mo>∶</mo>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>→</mo>
+        <mi>N</mi>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+      </mtd>
+    </mtr>
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>n</mi>
+        <mi>o</mi>
+        <mi>r</mi>
+        <mi>m</mi>
+        <mo stretchy="false">(</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo stretchy="false">)</mo>
+        <mo>=</mo>
+        <mrow>
+          <mo rspace="0.17em">{</mo>
+          <mtable columnalign="left" class="cases">
+            <mtr>
+              <mtd>
+                <mo stretchy="false">(</mo>
+                <mi>p</mi>
+                <mi>a</mi>
+                <mi>t</mi>
+                <mi>h</mi>
+                <mo stretchy="false">)</mo>
+              </mtd>
+              <mtd>
+                <mi>p</mi>
+                <mi>a</mi>
+                <mi>t</mi>
+                <mi>h</mi>
+                <mo>∈</mo>
+                <mi>I</mi>
+                <mi>n</mi>
+                <mi>t</mi>
+                <mi>e</mi>
+                <mi>g</mi>
+                <mi>e</mi>
+                <mi>r</mi>
+                <mo>∪</mo>
+                <mi>S</mi>
+                <mi>t</mi>
+                <mi>r</mi>
+                <mi>i</mi>
+                <mi>n</mi>
+                <mi>g</mi>
+              </mtd>
+            </mtr>
+            <mtr>
+              <mtd>
+                <mi>∅</mi>
+              </mtd>
+              <mtd>
+                <mi>p</mi>
+                <mi>a</mi>
+                <mi>t</mi>
+                <mi>h</mi>
+                <mo>∈</mo>
+                <mi>P</mi>
+                <mi>A</mi>
+                <mi>r</mi>
+                <mi>r</mi>
+                <mi>a</mi>
+                <mi>y</mi>
+                <mo>,</mo>
+                <mspace width="1em"></mspace>
+                <mi>p</mi>
+                <mi>a</mi>
+                <mi>t</mi>
+                <mi>h</mi>
+                <mo>=</mo>
+                <mi>∅</mi>
+              </mtd>
+            </mtr>
+            <mtr>
+              <mtd>
+                <mi>n</mi>
+                <mi>o</mi>
+                <mi>r</mi>
+                <mi>m</mi>
+                <mo stretchy="false">(</mo>
+                <msub>
+                  <mi>p</mi>
+                  <mn>1</mn>
+                </msub>
+                <mo stretchy="false">)</mo>
+                <mo>∪</mo>
+                <mi>n</mi>
+                <mi>o</mi>
+                <mi>r</mi>
+                <mi>m</mi>
+                <mo stretchy="false">(</mo>
+                <mo stretchy="false">(</mo>
+                <msub>
+                  <mi>p</mi>
+                  <mn>2</mn>
+                </msub>
+                <mo>,</mo>
+                <mo>.</mo>
+                <mo>.</mo>
+                <mo>.</mo>
+                <mo>,</mo>
+                <msub>
+                  <mi>p</mi>
+                  <mi>n</mi>
+                </msub>
+                <mo stretchy="false">)</mo>
+                <mo stretchy="false">)</mo>
+              </mtd>
+              <mtd>
+                <mi>p</mi>
+                <mi>a</mi>
+                <mi>t</mi>
+                <mi>h</mi>
+                <mo>∈</mo>
+                <mi>P</mi>
+                <mi>A</mi>
+                <mi>r</mi>
+                <mi>r</mi>
+                <mi>a</mi>
+                <mi>y</mi>
+                <mo>,</mo>
+                <mspace width="1em"></mspace>
+                <mi>p</mi>
+                <mi>a</mi>
+                <mi>t</mi>
+                <mi>h</mi>
+                <mo>=</mo>
+                <mo stretchy="false">(</mo>
+                <msub>
+                  <mi>p</mi>
+                  <mn>1</mn>
+                </msub>
+                <mo>,</mo>
+                <mo>.</mo>
+                <mo>.</mo>
+                <mo>.</mo>
+                <mo>,</mo>
+                <msub>
+                  <mi>p</mi>
+                  <mi>n</mi>
+                </msub>
+                <mo stretchy="false">)</mo>
+              </mtd>
+            </mtr>
+          </mtable>
+        </mrow>
+      </mtd>
+    </mtr>
+  </mtable>
+</math>
+</div>
+<p>When used as argument to <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>f</mi>
+</math> function, normalized path is
+equivalent to its original non-normalized form:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>f</mi>
+  <mo stretchy="false">(</mo>
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo stretchy="false">)</mo>
+  <mo>=</mo>
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>f</mi>
+  <mo stretchy="false">(</mo>
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mi>n</mi>
+  <mi>o</mi>
+  <mi>r</mi>
+  <mi>m</mi>
+  <mo stretchy="false">(</mo>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo stretchy="false">)</mo>
+  <mo stretchy="false">)</mo>
+</math>
+</div>
+<p>These property of normalized path is useful in case of path functions'
+implementations. By normalizing path prior to its usage, implementation
+or <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>f</mi>
+</math> can be based on sequential reduction of provided data instead
+of recursive application.</p>
+</section>
+<section id="functions">
+<h3>Functions</h3>
+<ul>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>g</mi>
+  <mi>e</mi>
+  <mi>t</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mtable class="ams-align" displaystyle="true">
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>g</mi>
+        <mi>e</mi>
+        <mi>t</mi>
+        <mo>∶</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>×</mo>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>→</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+      </mtd>
+    </mtr>
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>g</mi>
+        <mi>e</mi>
+        <mi>t</mi>
+        <mo stretchy="false">(</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>,</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo stretchy="false">)</mo>
+        <mo>=</mo>
+        <mi>v</mi>
+        <mi>a</mi>
+        <mi>l</mi>
+        <mi>u</mi>
+        <mi>e</mi>
+      </mtd>
+    </mtr>
+  </mtable>
+</math>
+</div>
+<p>Function <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>g</mi>
+  <mi>e</mi>
+  <mi>t</mi>
+</math> is used for obtaining part of <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math> structure
+referenced by <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+</math>.</p>
+<p>Examples:</p>
+<pre class="literal-block">data = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, []]}
+
+get(data, []) = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, []]}
+get(data, &quot;a&quot;) = [1, 2, {&quot;b&quot;: true}, []]
+get(data, [&quot;a&quot;, 0]) = 1
+get(data, [&quot;a&quot;, 2, &quot;b&quot;]) = true
+get(data, [&quot;a&quot;, [2, [&quot;b&quot;]]]) = true
+get(data, [[], [[]]]) = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, []]}
+get(data, 0) = null
+get(data, &quot;b&quot;) = null
+get(data, [&quot;a&quot;, 4]) = null</pre>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>s</mi>
+  <mi>e</mi>
+  <mi>t</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mtable class="ams-align" displaystyle="true">
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>s</mi>
+        <mi>e</mi>
+        <mi>t</mi>
+        <mo>∶</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>×</mo>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>×</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>→</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+      </mtd>
+    </mtr>
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>s</mi>
+        <mi>e</mi>
+        <mi>t</mi>
+        <mo stretchy="false">(</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>,</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>,</mo>
+        <mi>v</mi>
+        <mi>a</mi>
+        <mi>l</mi>
+        <mi>u</mi>
+        <mi>e</mi>
+        <mo stretchy="false">)</mo>
+        <mo>=</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>'</mo>
+      </mtd>
+    </mtr>
+  </mtable>
+</math>
+</div>
+<p>Function <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>s</mi>
+  <mi>e</mi>
+  <mi>t</mi>
+</math> is used for creating new data structure <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math>.
+Difference, between <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math> and <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math>, is in part of data
+structure referenced by <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+</math>. In <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math> this part is
+replaced with <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>v</mi>
+  <mi>a</mi>
+  <mi>l</mi>
+  <mi>u</mi>
+  <mi>e</mi>
+</math>.</p>
+<p>Edge cases:</p>
+<ul>
+<li><p><cite>array index out of bound</cite></p>
+<p>If integer path references array with length less than path,
+additional <span class="docutils literal">null</span> elements are created so that referenced
+array element can be set to provided value.</p>
+</li>
+<li><p><cite>object key not available</cite></p>
+<p>If string path references object which doesn't contain entry
+with key equal to path, new entry is created.</p>
+</li>
+<li><p><cite>path type doesn't match data type</cite></p>
+<p>If integer path references data which is not array, data is
+replaced with empty array and previously described <cite>array index out
+of bound</cite> edge case is applied.</p>
+<p>If string path references data which is not object, data is
+replaced with empty object and previously described <cite>object key not
+available</cite> edge case is applied.</p>
+<p>Examples:</p>
+<pre class="literal-block">data = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, []]}
+
+set(data, [&quot;a&quot;, 2, &quot;b&quot;], false) = {&quot;a&quot;: [1, 2, {&quot;b&quot;: false}, []]}
+set(data, &quot;a&quot;, 42) = {&quot;a&quot;: 42}
+set(data, [&quot;a&quot;, [3], 0], 42) = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, [42]]}
+set(data, [&quot;a&quot;, [3], 1], 42) = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, [null, 42]]}
+set(data, [], 42) = 42
+set(null, [1, &quot;a&quot;, 2], 42) = [null, {&quot;a&quot;: [null, null, 42]}]</pre>
+</li>
+</ul>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>m</mi>
+  <mi>o</mi>
+  <mi>v</mi>
+  <mi>e</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mtable class="ams-align" displaystyle="true">
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>r</mi>
+        <mi>e</mi>
+        <mi>m</mi>
+        <mi>o</mi>
+        <mi>v</mi>
+        <mi>e</mi>
+        <mo>∶</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>×</mo>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>→</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+      </mtd>
+    </mtr>
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>r</mi>
+        <mi>e</mi>
+        <mi>m</mi>
+        <mi>o</mi>
+        <mi>v</mi>
+        <mi>e</mi>
+        <mo stretchy="false">(</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>,</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo stretchy="false">)</mo>
+        <mo>=</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>'</mo>
+      </mtd>
+    </mtr>
+  </mtable>
+</math>
+</div>
+<p>Function <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>m</mi>
+  <mi>o</mi>
+  <mi>v</mi>
+  <mi>e</mi>
+</math> is used for creating new data structure
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math> based on provided <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math>. Difference, between
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math> and <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math>, is in part of data structure referenced
+by <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+</math>. In <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math> this part is omitted.</p>
+<p>In edge cases:</p>
+<ul class="simple">
+<li><p>array index out of bound</p></li>
+<li><p>object key not available</p></li>
+<li><p>path type doesn't match data type</p></li>
+</ul>
+<p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math> is same as <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math>.</p>
+<p>Examples:</p>
+<pre class="literal-block">data = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, []]}
+
+delete(data, [&quot;a&quot;, 1]) = {&quot;a&quot;: [1, {&quot;b&quot;: true}, []]}
+delete(data, []) = null
+delete(data, [&quot;a&quot;, 2, &quot;b&quot;]) = {&quot;a&quot;: [1, 2, {}, []]}
+delete(data, &quot;b&quot;) = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, []]}</pre>
+</li>
+</ul>
+<p>With this basic functions, other specialized functions can be defined.
+Example of commonly used derived function is <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>c</mi>
+  <mi>h</mi>
+  <mi>a</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+  <mi>e</mi>
+</math>:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mtable class="ams-align" displaystyle="true">
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>c</mi>
+        <mi>h</mi>
+        <mi>a</mi>
+        <mi>n</mi>
+        <mi>g</mi>
+        <mi>e</mi>
+        <mo>∶</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>×</mo>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>×</mo>
+        <mo stretchy="false">(</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>→</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo stretchy="false">)</mo>
+        <mo>→</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+      </mtd>
+    </mtr>
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>c</mi>
+        <mi>h</mi>
+        <mi>a</mi>
+        <mi>n</mi>
+        <mi>g</mi>
+        <mi>e</mi>
+        <mo stretchy="false">(</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>,</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>,</mo>
+        <mi>f</mi>
+        <mo stretchy="false">)</mo>
+        <mo>=</mo>
+        <mi>s</mi>
+        <mi>e</mi>
+        <mi>t</mi>
+        <mo stretchy="false">(</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>,</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>,</mo>
+        <mi>f</mi>
+        <mo stretchy="false">(</mo>
+        <mi>g</mi>
+        <mi>e</mi>
+        <mi>t</mi>
+        <mo stretchy="false">(</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>,</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo stretchy="false">)</mo>
+        <mo stretchy="false">)</mo>
+        <mo stretchy="false">)</mo>
+      </mtd>
+    </mtr>
+  </mtable>
+</math>
+</div>
+<p>where <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>f</mi>
+</math> is arbitrary data transformation function:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>f</mi>
+  <mo>∶</mo>
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>→</mo>
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math>
+</div>
+<p>It should be noted that all of these functions are &quot;pure functions&quot; that
+shouldn't make in-place changes of provided data arguments. Implementations
+usually take this into account by optimizing re usability of shared data.</p>
+</section>
+</section>
+<section id="characteristics">
+<h2>Characteristics</h2>
+<p>Some of the interesting characteristics of JSON Path approach to JSON Data
+referencing are:</p>
+<ul>
+<li><p>full JSON Data coverage</p>
+<p>Paths enable operations on all kinds of JSON Data without additional
+constrains on structural complexity or used data types.</p>
+</li>
+<li><p>get/set operations</p>
+<p>Same path instances can be used for both retrieval and change of referenced
+data. This is result of single path reference resolving algorithm, used
+as basis for get and set implementation.</p>
+</li>
+<li><p>flexible path composition</p>
+<p>Support for path normalization provides opportunities for composition
+of multiple path parts into single path.</p>
+<p>Example:</p>
+<pre class="literal-block">p1 = [ ..first-path.. ]
+p2 = [ ..second-path.. ]
+p3 = [ ..third-path.. ]
+
+[p1, p2, p3] ≅ [p1, [p2, [p3]]] ≅ [p1, [p2, p3]] ≅ [[p1, p2], p3]</pre>
+</li>
+<li><p>safe retrieval of deeply nested optional elements</p>
+<p>In case of complex array paths, if part of referenced data is not
+available, path traversal can be short-circuited without additional
+repetitive checking.</p>
+<p>Example:</p>
+<pre class="literal-block">data = {'a': {'b': {'c': 123}}}
+path = ['a', 'd', 'c']
+get(data, path) == null</pre>
+</li>
+<li><p>JSON Path is subset of JSON Data</p>
+<p>This property enables easy serialization and exchange of paths. Also,
+all path functions can be used for operations on paths themselves.</p>
+</li>
+<li><p>implementation simplicity</p>
+<p>With representation of paths as JSON Data and normalization into single
+&quot;flat&quot; array, no additional parsing is required and implementation
+can be based on optimal short-circuited iteration. This enables
+efficient implementations in wide range of modern programming languages
+and platforms.</p>
+</li>
+</ul>
+</section>
+<section id="python-implementation">
+<h2>Python implementation</h2>
+<p>Python implementation of JSON Path functions is available as part of
+<cite>hat-json</cite> library.</p>
+<p>Function signature is similar to abstract definition of JSON Path
+functions. Notable differences are:</p>
+<ul class="simple">
+<li><p>possibility to define alternative neutral <cite>null</cite> value in case of <cite>get</cite>
+function</p></li>
+<li><p>function <cite>set</cite> is named <cite>set_</cite> to avoid name clash with builtin function</p></li>
+</ul>
+<pre class="code python literal-block"><code><span class="name">Array</span> <span class="operator">=</span> <span class="name">typing</span><span class="operator">.</span><span class="name">List</span><span class="punctuation">[</span><span class="literal string single">'Data'</span><span class="punctuation">]</span><span class="whitespace">
+</span><span class="name">Object</span> <span class="operator">=</span> <span class="name">typing</span><span class="operator">.</span><span class="name">Dict</span><span class="punctuation">[</span><span class="name builtin">str</span><span class="punctuation">,</span> <span class="literal string single">'Data'</span><span class="punctuation">]</span><span class="whitespace">
+</span><span class="name">Data</span> <span class="operator">=</span> <span class="name">typing</span><span class="operator">.</span><span class="name">Union</span><span class="punctuation">[</span><span class="keyword constant">None</span><span class="punctuation">,</span> <span class="name builtin">bool</span><span class="punctuation">,</span> <span class="name builtin">int</span><span class="punctuation">,</span> <span class="name builtin">float</span><span class="punctuation">,</span> <span class="name builtin">str</span><span class="punctuation">,</span> <span class="name">Array</span><span class="punctuation">,</span> <span class="name">Object</span><span class="punctuation">]</span><span class="whitespace">
+</span><span class="name">Path</span> <span class="operator">=</span> <span class="name">typing</span><span class="operator">.</span><span class="name">Union</span><span class="punctuation">[</span><span class="name builtin">int</span><span class="punctuation">,</span> <span class="name builtin">str</span><span class="punctuation">,</span> <span class="name">typing</span><span class="operator">.</span><span class="name">List</span><span class="punctuation">[</span><span class="literal string single">'Path'</span><span class="punctuation">]]</span><span class="whitespace">
+
+</span><span class="keyword">def</span> <span class="name function">get</span><span class="punctuation">(</span><span class="name">data</span><span class="punctuation">:</span> <span class="name">Data</span><span class="punctuation">,</span> <span class="name">path</span><span class="punctuation">:</span> <span class="name">Path</span><span class="punctuation">,</span> <span class="name">default</span><span class="punctuation">:</span> <span class="name">typing</span><span class="operator">.</span><span class="name">Optional</span><span class="punctuation">[</span><span class="name">Data</span><span class="punctuation">]</span> <span class="operator">=</span> <span class="keyword constant">None</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="name">Data</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="operator">...</span><span class="whitespace">
+
+</span><span class="keyword">def</span> <span class="name function">set_</span><span class="punctuation">(</span><span class="name">data</span><span class="punctuation">:</span> <span class="name">Data</span><span class="punctuation">,</span> <span class="name">path</span><span class="punctuation">:</span> <span class="name">Path</span><span class="punctuation">,</span> <span class="name">value</span><span class="punctuation">:</span> <span class="name">Data</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="name">Data</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="operator">...</span><span class="whitespace">
+
+</span><span class="keyword">def</span> <span class="name function">remove</span><span class="punctuation">(</span><span class="name">data</span><span class="punctuation">:</span> <span class="name">Data</span><span class="punctuation">,</span> <span class="name">path</span><span class="punctuation">:</span> <span class="name">Path</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="name">Data</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="operator">...</span></code></pre>
+</section>
+<section id="javascript-implementation">
+<h2>JavaScript implementation</h2>
+<p>JavaScript implementation of JSON Path functions is available as part of
+<cite>&#64;hat-open/util</cite> library.</p>
+<p>This implementation provides full functionality of JSON Path definition
+with some changes to API itself. Most of these changes are made to enable
+more functional programming style:</p>
+<ul class="simple">
+<li><p>all functions are curried</p></li>
+<li><p><cite>delete</cite> is renamed to <cite>omit</cite></p></li>
+<li><p>position of arguments are changed</p></li>
+</ul>
+<pre class="code javascript literal-block"><code><span class="comment single">// get : Path -&gt; Data -&gt; Data</span><span class="whitespace">
+</span><span class="keyword declaration">function</span><span class="whitespace"> </span><span class="name other">get</span><span class="punctuation">(</span><span class="name other">path</span><span class="punctuation">,</span><span class="whitespace"> </span><span class="name other">data</span><span class="punctuation">)</span><span class="whitespace"> </span><span class="punctuation">{</span><span class="whitespace">
+    </span><span class="comment single">// return value</span><span class="whitespace">
+</span><span class="punctuation">}</span><span class="whitespace">
+
+</span><span class="comment single">// change : Path -&gt; (Data -&gt; Data) -&gt; Data</span><span class="whitespace">
+</span><span class="keyword declaration">function</span><span class="whitespace"> </span><span class="name other">change</span><span class="punctuation">(</span><span class="name other">path</span><span class="punctuation">,</span><span class="whitespace"> </span><span class="name other">fn</span><span class="punctuation">,</span><span class="whitespace"> </span><span class="name other">data</span><span class="punctuation">)</span><span class="whitespace"> </span><span class="punctuation">{</span><span class="whitespace">
+    </span><span class="comment single">// return new data</span><span class="whitespace">
+</span><span class="punctuation">}</span><span class="whitespace">
+
+</span><span class="comment single">// set : Path -&gt; Data -&gt; Data -&gt; Data</span><span class="whitespace">
+</span><span class="keyword declaration">function</span><span class="whitespace"> </span><span class="name other">set</span><span class="punctuation">(</span><span class="name other">path</span><span class="punctuation">,</span><span class="whitespace"> </span><span class="name other">value</span><span class="punctuation">,</span><span class="whitespace"> </span><span class="name other">data</span><span class="punctuation">)</span><span class="whitespace"> </span><span class="punctuation">{</span><span class="whitespace">
+    </span><span class="comment single">// return new data</span><span class="whitespace">
+</span><span class="punctuation">}</span><span class="whitespace">
+
+</span><span class="comment single">// omit : Path -&gt; Data -&gt; Data</span><span class="whitespace">
+</span><span class="keyword declaration">function</span><span class="whitespace"> </span><span class="name other">omit</span><span class="punctuation">(</span><span class="name other">path</span><span class="punctuation">,</span><span class="whitespace"> </span><span class="name other">data</span><span class="punctuation">)</span><span class="whitespace"> </span><span class="punctuation">{</span><span class="whitespace">
+    </span><span class="comment single">// return new data</span><span class="whitespace">
+</span><span class="punctuation">}</span></code></pre>
+</section>
+<section id="comparison-to-other-json-data-functions">
+<h2>Comparison to other JSON Data functions</h2>
+<p>Referencing parts of deeply nested complex JSON Data structures is the well
+known problem. There exists a lot of different applications and libraries
+that try to provide a solution to this problem.</p>
+<p>To compare previously described JSON Path to alternatives, we can group
+other implementations based on some of theirs significant characteristics:</p>
+<ul>
+<li><p>string based paths</p>
+<p>Some of the libraries use paths encoded as strings. Usually, this
+encodings consist of custom rules that try to mimic <a class="reference external" href="https://en.wikipedia.org/wiki/XPath">XPath</a> or JavaScript
+notation.</p>
+<p>Main benefit of this approach is condensed path definition which
+is usually well suited for usage as command line arguments to
+applications.</p>
+<p>Drawbacks of this approach are:</p>
+<ul class="simple">
+<li><p>additional path string decoder</p></li>
+<li><p>variety of custom non-standard notations</p></li>
+<li><p>difficult composition of path segments</p></li>
+</ul>
+<p>Some of the notable implementations:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://goessner.net/articles/JsonPath">JSONPath</a></p></li>
+<li><p><a class="reference external" href="https://stedolan.github.io/jq">jq</a></p></li>
+<li><p><a class="reference external" href="https://lodash.com">lodash</a> (with limited array based composition)</p></li>
+</ul>
+</li>
+<li><p>lenses</p>
+<p>Usage of lens functions if approach popularized by Haskell <a class="reference external" href="https://hackage.haskell.org/package/lens">Lens library</a>.
+It is based on functions that can be used as references to parts of
+composite data.</p>
+<p>Advantage of lenses is mostly associated with functional programming
+style and possibility of lens composition by usage of function
+composition.</p>
+<p>Drawback of this approach are:</p>
+<ul class="simple">
+<li><p>tightly dependent on specific programming language function definitions</p></li>
+<li><p>not appropriate for serialization</p></li>
+</ul>
+<p>Some of the notable implementations:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://ramdajs.com/docs/#lens">ramda.js</a></p></li>
+</ul>
+</li>
+</ul>
+</section>
+</main>
+<footer>
+<p>Thanks to Jakov Krstulovic Opara for review and suggestions.</p>
+</footer>
+
+
+</article>
+
+    </main>
+    <footer>
+        Copyright © 2021-2024 <a href="mailto:bozo@kopic.xyz">Bozo Kopic</a><br />
+        Content license <a href="https://creativecommons.org/licenses/by-sa/4.0">CC BY-SA</a>
+    </footer>
+</body>
+</html>

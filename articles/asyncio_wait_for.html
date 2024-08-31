@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="autor" content="Bozo Kopic" />
+    <meta name="description" content="Bozo Kopic homepage" />
+    <title>Beware of asyncio.wait_for</title>
+    <link href="../index.xml" type="application/atom+xml" rel="alternate" />
+    <link href="../main.css" rel="stylesheet" />
+    
+    <link href="../article.css" rel="stylesheet">
+
+</head>
+<body>
+    <header>
+        <h1>Bozo Kopic - Articles</h1>
+        <nav>
+            <span>[ <a href="../index.html">About</a> ]</span>
+            <span>[ <a href="../projects.html">Projects</a> ]</span>
+            <span>[ <a href="../articles.html">Articles</a> ]</span>
+            <span>[ <a href="../index.xml">Feed</a> ]</span>
+        </nav>
+    </header>
+    <main>
+        
+
+
+
+
+<article>
+
+<div class="info">
+    <label>Published:</label>
+    <div>2023-05-23 16:45:00 UTC</div>
+    <label>Updated:</label>
+    <div>2023-06-01 20:20:00 UTC</div>
+</div>
+
+<main id="beware-of-asyncio-wait-for">
+<h1 class="title">Beware of <cite>asyncio.wait_for</cite></h1>
+<p>Python <a class="reference external" href="https://docs.python.org/3/library/asyncio.html">asyncio</a> library provides event loop implementation with
+coroutine based interface. Usage of this library greatly improves development
+process involved in structuring applications with concurrent task executions.
+Nevertheless, this kind of problems require deep understanding of
+underling concepts, even if they are wrapped in user-friendly interface.
+Lack in understanding of implementation and interface can lead to
+hard-to-detect bugs.</p>
+<p>This article observes behavior of <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for">asyncio.wait_for</a> implementation
+and identifies some of unexpected edge cases. Understanding of
+basic <cite>asyncio</cite> concepts, such as coroutines, tasks and futures, is assumed
+(see <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a>).</p>
+<aside class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This article references <cite>asyncio.wait_for</cite> implementation available
+in CPython 3.11.3. Similar behavior can be observed in prior versions.</p>
+</aside>
+<section id="introduction">
+<h2>Introduction</h2>
+<p><cite>wait_for</cite> is one of basic <cite>asyncio</cite> utility functions which enables
+cancellation of task/future based on elapsed time. It accepts single
+<a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#asyncio-awaitables">awaitable</a> object and timeout. If provided awaitable object is coroutine,
+new task is created and coroutine execution is scheduled.</p>
+<p>By accepting any kind of coroutine, <cite>wait_for</cite> can be used as generic timeout
+utility. Individual coroutine implementations do not have to provide timeout
+arguments and implement additional timeout logic. Responsibility of timeout
+functionality is delegated to code calling coroutine which should be canceled
+based on timeout. Because of this inversion of responsibility, execution
+timeout can be applied even to those coroutines which are not initially
+written with timeout operation in mind.</p>
+<p><cite>asyncio</cite> provides mechanism for <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#task-cancellation">task cancellation</a> based on exception
+propagation. This generic mechanism enables cancellation of any kind of tasks
+as long as all executing coroutines propagate <a class="reference external" href="https://docs.python.org/3/library/asyncio-exceptions.html#asyncio.CancelledError">asyncio.CancelledError</a>.
+If any coroutine fails to propagate this exception, task cancellation will
+fail and often result in unwanted behavior.</p>
+<p>Because <cite>wait_for</cite> is basic function widely used by other coroutines, it
+is reasonable to expect that it will always successfully propagate
+<cite>CancelledError</cite> and therefore support correct cancellation. Nevertheless, this
+is not always the case. Following examples explore conditions when
+<cite>wait_for</cite> stops cancellation propagation.</p>
+</section>
+<section id="simple-producer-consumer">
+<h2>Simple producer/consumer</h2>
+<p>To help us in identifying this edge-cases, we will use simple producer/consumer
+model where synchronization between producer and consumer is based on
+<a class="reference external" href="https://docs.python.org/3/library/asyncio-queue.html#asyncio.Queue">asyncio.Queue</a>.</p>
+<p>Producer is modeled with coroutine which adds new entries to queue at regular
+intervals:</p>
+<pre class="code python literal-block"><code><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">produce</span><span class="punctuation">(</span><span class="name">queue</span><span class="punctuation">:</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">Queue</span><span class="punctuation">):</span><span class="whitespace">
+</span>    <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="keyword">for</span> <span class="name">i</span> <span class="operator word">in</span> <span class="name">itertools</span><span class="operator">.</span><span class="name">count</span><span class="punctuation">(</span><span class="literal number integer">1</span><span class="punctuation">):</span><span class="whitespace">
+</span>            <span class="name">queue</span><span class="operator">.</span><span class="name">put_nowait</span><span class="punctuation">(</span><span class="name">i</span><span class="punctuation">)</span><span class="whitespace">
+</span>            <span class="keyword">await</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">sleep</span><span class="punctuation">(</span><span class="literal number integer">1</span><span class="punctuation">)</span><span class="whitespace">
+
+</span>    <span class="keyword">finally</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'closing produce'</span><span class="punctuation">)</span></code></pre>
+<p>Consumer is modeled with coroutine which waits for new entries. Once entry
+is available in queue, consumer will print entry to standard output and
+continue waiting for new entries indefinitely:</p>
+<pre class="code python literal-block"><code><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">consume</span><span class="punctuation">(</span><span class="name">queue</span><span class="punctuation">:</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">Queue</span><span class="punctuation">):</span><span class="whitespace">
+</span>    <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="keyword">while</span> <span class="keyword constant">True</span><span class="punctuation">:</span><span class="whitespace">
+</span>            <span class="name">result</span> <span class="operator">=</span> <span class="keyword">await</span> <span class="name">queue</span><span class="operator">.</span><span class="name">get</span><span class="punctuation">()</span><span class="whitespace">
+</span>            <span class="name builtin">print</span><span class="punctuation">(</span><span class="name">result</span><span class="punctuation">)</span><span class="whitespace">
+
+</span>    <span class="keyword">finally</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'closing consume'</span><span class="punctuation">)</span></code></pre>
+<p>Additional &quot;work&quot; is represented with coroutine which sleeps based on
+provided delay:</p>
+<pre class="code python literal-block"><code><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">other_work</span><span class="punctuation">(</span><span class="name">delay</span><span class="punctuation">:</span> <span class="name builtin">float</span><span class="punctuation">):</span><span class="whitespace">
+</span>    <span class="keyword">await</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">sleep</span><span class="punctuation">(</span><span class="name">delay</span><span class="punctuation">)</span></code></pre>
+<p>Producer and consumer are run as new tasks which are cancelled after additional
+work is done:</p>
+<pre class="code python literal-block"><code><span class="name">queue</span> <span class="operator">=</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">Queue</span><span class="punctuation">()</span><span class="whitespace">
+
+</span><span class="name">producer</span> <span class="operator">=</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">create_task</span><span class="punctuation">(</span><span class="name">produce</span><span class="punctuation">(</span><span class="name">queue</span><span class="punctuation">))</span><span class="whitespace">
+</span><span class="name">consumer</span> <span class="operator">=</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">create_task</span><span class="punctuation">(</span><span class="name">consume</span><span class="punctuation">(</span><span class="name">queue</span><span class="punctuation">))</span><span class="whitespace">
+
+</span><span class="keyword">await</span> <span class="name">other_work</span><span class="punctuation">(</span><span class="literal number float">2.5</span><span class="punctuation">)</span><span class="whitespace">
+
+</span><span class="name">producer</span><span class="operator">.</span><span class="name">cancel</span><span class="punctuation">()</span><span class="whitespace">
+</span><span class="name">consumer</span><span class="operator">.</span><span class="name">cancel</span><span class="punctuation">()</span><span class="whitespace">
+
+</span><span class="keyword">with</span> <span class="name">contextlib</span><span class="operator">.</span><span class="name">suppress</span><span class="punctuation">(</span><span class="name">asyncio</span><span class="operator">.</span><span class="name">CancelledError</span><span class="punctuation">):</span><span class="whitespace">
+</span>    <span class="keyword">await</span> <span class="name">producer</span><span class="whitespace">
+
+</span><span class="keyword">with</span> <span class="name">contextlib</span><span class="operator">.</span><span class="name">suppress</span><span class="punctuation">(</span><span class="name">asyncio</span><span class="operator">.</span><span class="name">CancelledError</span><span class="punctuation">):</span><span class="whitespace">
+</span>    <span class="keyword">await</span> <span class="name">consumer</span></code></pre>
+<p>By running this code, we can expect:</p>
+<pre class="literal-block">1
+2
+3
+closing produce
+closing consume</pre>
+<p><a class="reference external" href="asyncio_wait_for/example1.py">Example 1 source code</a></p>
+</section>
+<section id="consumer-with-wait-for">
+<h2>Consumer with <cite>wait_for</cite></h2>
+<p>To introduce <cite>wait_for</cite>, we can change <cite>consume</cite> from previous example with:</p>
+<pre class="code python literal-block"><code><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">consume</span><span class="punctuation">(</span><span class="name">queue</span><span class="punctuation">:</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">Queue</span><span class="punctuation">):</span><span class="whitespace">
+</span>    <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="keyword">while</span> <span class="keyword constant">True</span><span class="punctuation">:</span><span class="whitespace">
+</span>            <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>                <span class="name">result</span> <span class="operator">=</span> <span class="keyword">await</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">wait_for</span><span class="punctuation">(</span><span class="name">queue</span><span class="operator">.</span><span class="name">get</span><span class="punctuation">(),</span> <span class="name">timeout</span><span class="operator">=</span><span class="literal number float">0.5</span><span class="punctuation">)</span><span class="whitespace">
+</span>                <span class="name builtin">print</span><span class="punctuation">(</span><span class="name">result</span><span class="punctuation">)</span><span class="whitespace">
+
+</span>            <span class="keyword">except</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">TimeoutError</span><span class="punctuation">:</span><span class="whitespace">
+</span>                <span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'timeout'</span><span class="punctuation">)</span><span class="whitespace">
+
+</span>    <span class="keyword">finally</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'closing consume'</span><span class="punctuation">)</span></code></pre>
+<p>New implementation of <cite>consume</cite> waits for queued entries with provided
+timeout. If timeout occurs, <span class="docutils literal">timeout</span> is printed to standard output and
+loop starts from beginning.</p>
+<p>Running this example will result in:</p>
+<pre class="literal-block">1
+timeout
+2
+timeout
+3
+closing produce
+closing consume</pre>
+<p><a class="reference external" href="asyncio_wait_for/example2.py">Example 2 source code</a></p>
+</section>
+<section id="wait-for-ignoring-cancellation">
+<h2><cite>wait_for</cite> ignoring cancellation</h2>
+<p>In previous example, if we change <cite>other_work</cite>'s delay to <span class="docutils literal">0</span>:</p>
+<pre class="code python literal-block"><code><span class="keyword">await</span> <span class="name">other_work</span><span class="punctuation">(</span><span class="literal number integer">0</span><span class="punctuation">)</span></code></pre>
+<p>unexpected result occurs:</p>
+<pre class="literal-block">closing produce
+1
+timeout
+timeout
+timeout
+timeout
+...</pre>
+<p>Execution of this example newer finishes because consumer is not successfully
+canceled. Because <cite>wait_for</cite> is only coroutine awaited in <cite>consume</cite>, we
+can assume that <cite>wait_for</cite> did not propagate <cite>CancelledError</cite>.</p>
+<p><a class="reference external" href="asyncio_wait_for/example3.py">Example 3 source code</a></p>
+</section>
+<section id="focusing-on-consumer">
+<h2>Focusing on consumer</h2>
+<p>To focus only on consumer, we can skip producer's task creation:</p>
+<pre class="code python literal-block"><code><span class="name">queue</span> <span class="operator">=</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">Queue</span><span class="punctuation">()</span><span class="whitespace">
+
+</span><span class="name">consumer</span> <span class="operator">=</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">create_task</span><span class="punctuation">(</span><span class="name">consume</span><span class="punctuation">(</span><span class="name">queue</span><span class="punctuation">))</span><span class="whitespace">
+
+</span><span class="keyword">await</span> <span class="name">other_work</span><span class="punctuation">(</span><span class="literal number integer">0</span><span class="punctuation">)</span><span class="whitespace">
+
+</span><span class="name">consumer</span><span class="operator">.</span><span class="name">cancel</span><span class="punctuation">()</span><span class="whitespace">
+
+</span><span class="keyword">with</span> <span class="name">contextlib</span><span class="operator">.</span><span class="name">suppress</span><span class="punctuation">(</span><span class="name">asyncio</span><span class="operator">.</span><span class="name">CancelledError</span><span class="punctuation">):</span><span class="whitespace">
+</span>    <span class="keyword">await</span> <span class="name">consumer</span></code></pre>
+<p>Just by removing producer, consumer task is successfully canceled:</p>
+<pre class="literal-block">closing consume</pre>
+<p><a class="reference external" href="asyncio_wait_for/example4.py">Example 4 source code</a></p>
+</section>
+<section id="identifying-edge-case">
+<h2>Identifying edge-case</h2>
+<p>Because producer and consumer only interact through queue, we can expect that
+queue state is significant in occurrence of unwanted behavior. To test this
+hypothesis, instead of empty queue, non empty queue is provided to <cite>consume</cite>:</p>
+<pre class="code python literal-block"><code><span class="name">queue</span> <span class="operator">=</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">Queue</span><span class="punctuation">()</span><span class="whitespace">
+</span><span class="name">queue</span><span class="operator">.</span><span class="name">put_nowait</span><span class="punctuation">(</span><span class="literal number integer">1</span><span class="punctuation">)</span></code></pre>
+<p>This change is sufficient for introduction of unwanted behavior:</p>
+<pre class="literal-block">1
+timeout
+timeout
+timeout
+timeout
+...</pre>
+<p>This example demonstrates that behavior of <cite>wait_for</cite> is dependent of
+provided awaitable's behavior which can even result in stopping
+<cite>CancelledError</cite> propagation. To accomplish this, we have used
+<span class="docutils literal">asyncio.sleep(0)</span> as a way to schedule precise task cancellation depending
+on task creation. Same sequence of <cite>create_task</cite> and <cite>cancel</cite> calls can easily
+occur in real-world scenarios. Because of this, great care must be taken when
+<cite>wait_for</cite> is used, taking into account behavior of provided awaitable and
+possible cancellation timing of task executing <cite>wait_for</cite>.</p>
+<p><a class="reference external" href="asyncio_wait_for/example5.py">Example 5 source code</a></p>
+</section>
+<section id="when-to-expect-unsuccessful-cancellation">
+<h2>When to expect unsuccessful cancellation</h2>
+<p>As previous examples demonstrated, slight modifications in delay/timeout
+parameters can produce significant functional changes. These parameters
+are often provided as part of end-user defined configuration which makes
+their values additionally volatile.</p>
+<p>Also, order of actions, which at first sight should not have significant
+impact, can also cause failure of <cite>wait_for</cite> cancellation.</p>
+<p>Taking into account this causes, it is hard to describe single universal
+case when to expect unsuccessful cancellation. That said, most significant
+behavior, which impacts cancellation propagation is:</p>
+<blockquote>
+<p>When task running <cite>wait_for</cite> is cancelled at the &quot;same time&quot; as
+awaitable's result is made available, <cite>wait_for</cite> can return
+awaitable's result instead of rising <cite>CancelledError</cite>.</p>
+</blockquote>
+<p>In this case, concept of &quot;same time&quot; is kind of vague because of
+sequential execution of concurrent tasks. Actions, such as task cancellation
+or task finishing with result, are usually not instantaneous (executed at the
+moment <cite>cancel</cite> is called). This actions can result in appending items
+to event loop and delegating action execution to future loop iterations.</p>
+<p>To demonstrate stated edge-case, following example is provided:</p>
+<pre class="code python literal-block"><code><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">do_work</span><span class="punctuation">(</span><span class="name">future</span><span class="punctuation">:</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">Future</span><span class="punctuation">):</span><span class="whitespace">
+</span>    <span class="keyword">await</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">sleep</span><span class="punctuation">(</span><span class="literal number integer">1</span><span class="punctuation">)</span><span class="whitespace">
+</span>    <span class="keyword">return</span> <span class="literal number integer">42</span><span class="whitespace">
+
+</span><span class="name">loop</span> <span class="operator">=</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">get_running_loop</span><span class="punctuation">()</span><span class="whitespace">
+</span><span class="name">future</span> <span class="operator">=</span> <span class="name">loop</span><span class="operator">.</span><span class="name">create_future</span><span class="punctuation">()</span><span class="whitespace">
+
+</span><span class="name">work_task</span> <span class="operator">=</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">create_task</span><span class="punctuation">(</span><span class="name">do_work</span><span class="punctuation">(</span><span class="name">future</span><span class="punctuation">))</span><span class="whitespace">
+</span><span class="name">wait_task</span> <span class="operator">=</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">create_task</span><span class="punctuation">(</span><span class="name">asyncio</span><span class="operator">.</span><span class="name">wait_for</span><span class="punctuation">(</span><span class="name">work_task</span><span class="punctuation">,</span> <span class="name">timeout</span><span class="operator">=</span><span class="literal number integer">2</span><span class="punctuation">))</span><span class="whitespace">
+
+</span><span class="keyword">await</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">sleep</span><span class="punctuation">(</span><span class="literal number integer">1</span><span class="punctuation">)</span><span class="whitespace">
+
+</span><span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'work task done'</span><span class="punctuation">,</span> <span class="name">work_task</span><span class="operator">.</span><span class="name">done</span><span class="punctuation">())</span><span class="whitespace">
+</span><span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'wait task done'</span><span class="punctuation">,</span> <span class="name">wait_task</span><span class="operator">.</span><span class="name">done</span><span class="punctuation">())</span><span class="whitespace">
+</span><span class="name">wait_task</span><span class="operator">.</span><span class="name">cancel</span><span class="punctuation">()</span><span class="whitespace">
+
+</span><span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="name">result</span> <span class="operator">=</span> <span class="keyword">await</span> <span class="name">wait_task</span><span class="whitespace">
+</span>    <span class="name builtin">print</span><span class="punctuation">(</span><span class="name">result</span><span class="punctuation">)</span><span class="whitespace">
+
+</span><span class="keyword">except</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">CancelledError</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'cancelled'</span><span class="punctuation">)</span></code></pre>
+<p>Running this example results in:</p>
+<pre class="literal-block">work task done False
+wait task done False
+42</pre>
+<p>Here we can see that both <cite>do_work</cite> and main task are sleeping for
+1 second, after which <cite>wait_task</cite> is cancelled. Although, <cite>cancel</cite> method is
+called, awaiting <cite>wait_task</cite> results in <cite>do_work</cite>'s result instead of
+raising <cite>CancelledError</cite>.</p>
+<p>What is also important to notice is that both <cite>work_task</cite> and <cite>wait_task</cite>
+are not done at the time of calling <cite>cancel</cite> method. This tells us that
+we cannot reason about cancel success based on current state of these two
+tasks.</p>
+<p><a class="reference external" href="asyncio_wait_for/example6.py">Example 6 source code</a></p>
+</section>
+<section id="alternative-implementation">
+<h2>Alternative implementation</h2>
+<p>To mitigate problems which can occur when using <cite>asyncio.wait_for</cite>, <a class="reference external" href="https://hat-aio.hat-open.com/">hat-aio</a>
+implements <a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#wait_for">hat.aio.wait_for</a> which can be used as drop-in
+replacement for <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for">asyncio.wait_for</a>. Together with propagation of
+<cite>CancelledError</cite>, this implementation provides
+<a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#CancelledWithResultError">hat.aio.CancelledWithResultError</a>. <cite>CancelledWithResultError</cite> extends
+<cite>CancelledError</cite> with additional result/exception. This result/exception
+contains awaitable's result in case when result is available and <cite>wait_for</cite>
+is cancelled at the same time. Because this exception is also <cite>CancelledError</cite>,
+all existing code catching <cite>CancelledError</cite> will continue to work.
+In cases where obtaining result is necessary, even when <cite>CancelledError</cite> is
+raised (e.g. result is associated with resource which requires explicit
+cleanup), <cite>CancelledWithResultError</cite> can be used.</p>
+<p>In the previous example, if we replace <cite>asyncio.wait_for</cite> with
+<cite>hat.aio.wait_for</cite>:</p>
+<pre class="code python literal-block"><code><span class="name">wait_task</span> <span class="operator">=</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">create_task</span><span class="punctuation">(</span><span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">wait_for</span><span class="punctuation">(</span><span class="name">work_task</span><span class="punctuation">,</span> <span class="name">timeout</span><span class="operator">=</span><span class="literal number integer">2</span><span class="punctuation">))</span></code></pre>
+<p>result is:</p>
+<pre class="literal-block">work task done False
+wait task done False
+cancelled</pre>
+<p>If obtaining result is required, <cite>CancelledError</cite> can be replaced with
+<cite>CancelledWithResultError</cite>:</p>
+<pre class="code python literal-block"><code><span class="keyword">except</span> <span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">CancelledWithResultError</span> <span class="keyword">as</span> <span class="name">e</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'cancelled with result'</span><span class="punctuation">,</span> <span class="name">e</span><span class="operator">.</span><span class="name">result</span><span class="punctuation">)</span></code></pre>
+<p>which results is:</p>
+<pre class="literal-block">work task done False
+wait task done False
+cancelled with result 42</pre>
+<p><a class="reference external" href="asyncio_wait_for/example7.py">Example 7 source code</a></p>
+</section>
+</main>
+
+
+</article>
+
+    </main>
+    <footer>
+        Copyright © 2021-2024 <a href="mailto:bozo@kopic.xyz">Bozo Kopic</a><br />
+        Content license <a href="https://creativecommons.org/licenses/by-sa/4.0">CC BY-SA</a>
+    </footer>
+</body>
+</html>

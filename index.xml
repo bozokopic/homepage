@@ -1,0 +1,3194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>Bozo Kopic home page</title>
+<link href="https://bozo.kopic.xyz"/>
+<link href="index.xml" rel="self"/>
+<id>urn:uuid:ab6e1271-bb80-4299-9f2d-9d7ff897f6cf</id>
+<updated>2024-08-31T18:56:00Z</updated>
+<author>
+<name>Bozo Kopic</name>
+<email>bozo@kopic.xyz</email>
+</author>
+<entry>
+<title>asyncio resource management</title>
+<link href="https://bozo.kopic.xyz/articles/asyncio_resource.html"/>
+<id>urn:uuid:447ad11d-f6ec-436f-87fb-d708a26f4600</id>
+<published>2024-08-31T18:56:00Z</published>
+<content type="xhtml">
+<main id="asyncio-resource-management">
+<h1 class="title"><cite>asyncio</cite> resource management</h1>
+<p>This article analyzes resource management in applications based on Python's
+<a class="reference external" href="https://docs.python.org/3/library/asyncio.html">asyncio</a> library. As introduction, generic concept and significance of
+resource management is explained. Concepts discussed in this section
+are applicable to wide variety of implementations and are not specific to
+<cite>asyncio</cite> or Python. Later, focus is shifted towards Python implementation and
+<cite>asyncio</cite> library by explaining potential problems in usage of this library.
+As a solution to noted problems, second part of this article presents
+<a class="reference external" href="https://hat-aio.hat-open.com">hat-aio</a> utility library.</p>
+<aside class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This article assumes familiarity with <a class="reference external" href="https://docs.python.org/3/library/asyncio.html">asyncio</a> library and concepts
+such as <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#task-cancellation">task cancellation</a> and distinction between
+<a class="reference external" href="https://docs.python.org/3/library/asyncio-future.html#future-object">asyncio.Future</a>, <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#asyncio.Task">asyncio.Task</a>, coroutine function and coroutine object.</p>
+</aside>
+<section id="procedural-based-architecture">
+<h2>Procedural based architecture</h2>
+<p>In procedural programming languages, functions are used as primary way to
+organize code. Function implementation itself is defined as composition of other
+function calls. This enables creation of higher levels of abstraction based on
+previously defined functions and serves as efficient model for solving even the
+most complex tasks. To enable this kind of composition, crucial part of
+each function is its interface.</p>
+<p>Function interface is usually defined by its arguments and return value. By
+explicitly stating on which arguments function operates and what result function
+produces, function provides basic method of encapsulation. Thus, function
+implementation itself is regarded as &quot;implementation detail&quot; -
+something that should not be primary concern for user of function. As long
+as interface is obeyed, user can utilize function in any way necessary and
+expect correct results.</p>
+<p>In practice, function interface alone is not sufficient to recognize all
+possible side effects of function execution. Together with shared state and
+thread-local storage, even function arguments can hide not so obvious
+encapsulation braking properties. In contrast to self-contained &quot;plain data&quot;,
+arguments can represent identifiers/references to stateful resources (e.g.
+allocated memory, open file handles, sockets, ...). By accepting/returning
+resource as part of its interface, function becomes part of resource management.
+This imposes additional rules that are, in most languages, available only as
+part of additional API documentation. Thus responsibility is shifted towards
+function user which has to take into account resource lifetime and ownership
+rules. Any kind of resource, that crosses single function boundary, has
+potential to cause &quot;resource leakage&quot;.</p>
+<p>When function accepts resource as argument or returns resource as result,
+care should be taken to inform function user of all side effects that function
+has on resource state. In cases when function utilizes resource as
+part of its implementation, without exposing it in function interface, it is
+responsibility of function itself to properly create/manipulate/free resource
+thus preventing &quot;resource leaks&quot;.</p>
+<p>All these constraints, that apply to classical procedural architectures,
+also apply to other architectures that are built upon procedural
+code organization. One example of these derived architectures is coroutine
+based architecture.</p>
+</section>
+<section id="coroutine-based-architecture">
+<h2>Coroutine based architecture</h2>
+<p>Coroutines in modern programming languages (e.g. Python) are used as tool for
+modeling concurrent algorithms. Ease of usage and their usability comes from
+close mimicking of regular functions. Even though execution of statements inside
+coroutine can be suspended/resumed, sequential execution and interface
+definition is closely based on regular function model. Thus, most programmers
+(that are usually well acquainted with procedural programming style) expect
+similar behavior, in regard of resource management, as they expect from
+regular functions.</p>
+<p>Similarities between coroutines and functions can sometimes be deceptive.
+By introduction of additional control flow rules, care must be taken to
+expect different execution side-effects than in syntactically similar regular
+functions. In case of Python, each <cite>await</cite> is potential place of suspending
+execution, resuming execution, cancelling of current task or even permanent
+stopping of task execution. Therefore, resource management must take into
+account not strictly linear execution of coroutine statements.</p>
+<p>To prevent &quot;resource leaks&quot;, each &quot;await&quot; expression should expect possible
+task cancellation and safely end resource usage. Python implements task
+cancellation utilizing exception raising (<cite>CancelledError</cite>). Because of this,
+<cite>try/except/finally</cite> blocks are often necessary part of resource
+management which itself introduces additional nonlinear execution.</p>
+<p>In Python <cite>asyncio</cite> library, concurrent execution threads, responsible for
+execution of coroutine implementations, are represented with <cite>tasks</cite>. These
+<cite>tasks</cite> are also resources and should be managed as any other resources.
+Similarly to OS threads which should be &quot;joined&quot;, execution lifetime of
+<cite>tasks</cite> (including starting and stopping) should be monitored. Therefor,
+each coroutine, spawning new task that are encapsulated as internal resources
+(ones not crossing coroutine execution boundaries), should include cleanup
+sequence ensuring that all newly spawned internal tasks have completed their
+execution. For all tasks that are directly or indirectly part of coroutine
+interface (input arguments or return values), ownership rules should be
+clearly documented.</p>
+</section>
+<section id="uninterrupted-task-execution">
+<h2>Uninterrupted task execution</h2>
+<p>Because coroutines introduce additional execution exit points, it can be
+challenging to implement functionality that requires uninterrupted execution.
+One of examples, where uninterrupted execution is required, is
+resource cleanup procedures. When resource requires additional IO operations
+and/or include execution time delays, resource cleanup procedures
+are implemented as coroutines. To guarantee correct resource release, this
+cleanup coroutine should usually have uninterrupted execution.</p>
+<p>To analyze possible problems of resource usage and uninterrupted execution,
+we can start with generic resource example:</p>
+<pre class="code python literal-block"><code>async def do_work():
+    resource = await create_resource()
+    try:
+        ...  # utilize resource to do some work
+    finally:
+        await cleanup_resource(resource)
+
+async def create_resource():
+    ...  # create and return resource
+
+async def cleanup_resource():
+    ...  # cleanup resource</code></pre>
+<p>In this simple example, resource usage is encapsulated as part of <cite>do_work</cite>
+coroutine. Because resource is not part of <cite>do_work</cite>'s interface (directly or
+indirectly), it is expected that <cite>do_work</cite> will correctly release resource
+before its execution is done. This is the reason why <cite>cleanup_resource</cite> is
+called as part of <cite>finally</cite> block.</p>
+<p>If coroutine's <cite>create_resource</cite> and <cite>cleanup_resource</cite> are correctly
+implemented (in regard of encapsulation/cleanup expectations), and if task
+associated with <cite>do_work</cite> execution is not cancelled, this example correctly
+models generic resource usage. But, if task executing <cite>do_work</cite> is cancelled,
+this example can result in &quot;resource leaks&quot;.</p>
+<p>For example, we can expect cases where <cite>do_work</cite> is constrained with execution
+time. If this execution time is exceeded, <cite>do_work</cite> should be canceled:</p>
+<pre class="code python literal-block"><code>do_work_task = asyncio.create_task(do_work())
+await asyncio.wait_for(do_work_task, timeout)</code></pre>
+<p>With introduction of task cancellation, it is not clear if <cite>do_work</cite> will
+correctly cleanup resource. Because task cancellation is mapped to raising
+of <cite>CancelledError</cite>, if task is cancelled during execution of <cite>try</cite> block,
+<cite>finally</cite> block will be executed thus releasing resource. But, if
+<cite>CancelledError</cite> is raised during execution of <cite>finally</cite> block (e.g. <cite>try</cite>
+block execution is finished), cleanup procedure could be interrupted while
+resource is still not released. Because <cite>asyncio</cite> enables multiple cancellations
+of same task, <cite>CancelledError</cite> can even be expected while <cite>finally</cite> block
+is running as consequence of previous <cite>CancelledError</cite>.</p>
+<p>To shield task from cancellation, <cite>asyncio</cite> implements <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#asyncio.shield">asyncio.shield</a>.
+By using <cite>asyncio.shield</cite> while calling <cite>cleanup_resource</cite>, we can rewrite
+<cite>do_work</cite>:</p>
+<pre class="code python literal-block"><code>async def do_work():
+    resource = await create_resource()
+    try:
+        ...  # utilize resource to do some work
+    finally:
+        await asyncio.shield(cleanup_resource(resource))</code></pre>
+<aside class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Because of additional complexity, this example simplifies correct
+usage of <cite>asyncio.shield</cite> which mandates keeping of task reference,
+thus preventing task garbage collection. In case of cancelling task
+while awaiting <cite>asyncio.shield</cite>, if reference to shielded task is not kept,
+its execution can be interrupted.</p>
+</aside>
+<p>Now, once <cite>cleanup_resource</cite> is called, it will not be interrupted. But, even
+though <cite>cleanup_resource</cite> is shielded, task executing <cite>do_work</cite> is not
+shielded. <cite>await asyncio.shield</cite> is not different from any other
+<cite>await</cite> and will result in raising of <cite>CancelledError</cite> if task is canceled.
+This behavior doesn't align with assumption of internal resource encapsulation
+because <cite>do_work</cite> can finish execution before resource is released.</p>
+<p>In order to handle this problem, library <cite>hat-aio</cite> implements
+<a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#uncancellable">hat.aio.uncancellable</a>. This coroutine can be used
+as means of temporary suppressing/delaying cancellation, while shielded
+coroutine is executing.</p>
+<p>By replacing <cite>asyncio.shield</cite> with <cite>hat.aio.uncancellable</cite>, <cite>do_work</cite>
+can guarantee that internal resource is released when <cite>do_work</cite> itself finishes
+execution:</p>
+<pre class="code python literal-block"><code>async def do_work():
+    resource = await create_resource()
+    try:
+        ...  # utilize resource to do some work
+    finally:
+        await hat.aio.uncancellable(cleanup_resource(resource))</code></pre>
+<p>This implementation will stop propagation of <cite>CancelledError</cite> to
+<cite>cleanup_resource</cite> and enable uninterrupted execution of <cite>do_work</cite> while
+cleanup procedure is running.</p>
+<p>When <cite>hat.aio.uncancellable</cite> is used, following constraints should be taken
+into account:</p>
+<ul class="simple">
+<li><p><cite>hat.aio.uncancellable</cite> spawn new task (same as <cite>asyncio.shield</cite>), thus
+introducing additional overhead</p></li>
+<li><p>re-raising of <cite>CancelledError</cite> is prioritized over shielded task's
+result/exception (future versions of <cite>hat-aio</cite> could utilize
+<a class="reference external" href="https://docs.python.org/3/library/exceptions.html#lib-exception-groups">exception groups</a> to prevent suppression of task exceptions in case of
+<cite>CancelledError</cite>)</p></li>
+</ul>
+<aside class="admonition note">
+<p class="admonition-title">Note</p>
+<p>In majority of cases, <cite>hat.aio.uncancellable</cite> should be called with default
+<span class="docutils literal">raise_cancel=True</span> which, instead of discarding <cite>CancelledError</cite>, delays
+raising of possible <cite>CancelledError</cite> after shielded task finishes execution.</p>
+</aside>
+</section>
+<section id="spawning-tasks">
+<h2>Spawning tasks</h2>
+<p>Python <cite>asyncio</cite> library represents concurrent execution threads with
+<cite>asyncio.Task</cite> abstraction (this should not be confused with operating system
+level threads which enable parallelism). Managing this kind of resources
+should be done with additional care, taking into account task's lifetime
+and possibility of cancellation. <cite>asyncio</cite> library doesn't provide enough
+mechanisms regarding management of multiple tasks and their lifetime.</p>
+<aside class="admonition note">
+<p class="admonition-title">Note</p>
+<p>CPython 3.11 introduced <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#task-groups">task groups</a> which support managing lifetime
+of multiple tasks. Although simple grouping of tasks is supported,
+guaranties regarding task cancellation or waiting for resource cleanup
+are not available.</p>
+</aside>
+<p>To simplify referencing multiple tasks and control their lifetime, <cite>hat-aio</cite>
+implements <a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#Group">hat.aio.Group</a>. By spawning tasks via <cite>hat.aio.Group</cite>,
+tasks' lifetime is managed by group's lifetime. Together with control of
+directly spawned tasks, each group can control lifetime of other groups
+(referred to as subgroups or child groups).</p>
+<p>Each instance of <cite>hat.aio.Group</cite> transitions between 3 distinctive states:
+<span class="docutils literal">OPEN</span>, <span class="docutils literal">CLOSING</span> and <span class="docutils literal">CLOSED</span>. To check for current state and
+initiate/wait for state transition, following interface is exposed:</p>
+<pre class="code python literal-block"><code>&#64;property
+def is_open(self) -&gt; bool:
+    ...
+
+&#64;property
+def is_closing(self) -&gt; bool:
+    ...
+
+&#64;property
+def is_closed(self) -&gt; bool:
+    ...
+
+async def wait_closing(self):
+    ...
+
+async def wait_closed(self):
+    ...
+
+def close(self):
+    ...
+
+async def async_close(self):
+    ...</code></pre>
+<p>When new instance of group is created, it is initially set to <span class="docutils literal">OPEN</span> state.
+Once <cite>close</cite> method is called, group transitions to <span class="docutils literal">CLOSING</span> state.
+This state remains active until all associated tasks have finished their
+execution and all associated subgroups have transition to <span class="docutils literal">CLOSED</span> state.
+Only when all other managed resources (tasks and subgroups) have been
+released, instance of group will transition to <span class="docutils literal">CLOSED</span> state. For each group
+instance, this state transition (<span class="docutils literal">OPEN</span> -&gt; <span class="docutils literal">CLOSING</span> -&gt; <span class="docutils literal">CLOSED</span>) is
+irreversible. Only first call to <cite>close</cite> method initiates closing of group,
+while subsequent call have no effect. Additional <cite>async_close</cite> method
+is helper coroutine which calls <cite>close</cite> method and waits for <cite>wait_closed</cite>
+coroutine to finish.</p>
+<p>To create new tasks or subgroups, <cite>hat.aio.Group</cite> implements following
+interface:</p>
+<pre class="code python literal-block"><code>def create_subgroup(self, log_exceptions: bool | None = None) -&gt; Group:
+    ...
+
+def wrap(self, obj: Awaitable) -&gt; asyncio.Task:
+    ...
+
+def spawn(self, fn: Callable[..., Awaitable], *args, **kwargs) -&gt; asyncio.Task:
+    ...</code></pre>
+<p>Methods <cite>spawn</cite> and <cite>wrap</cite> create new tasks, associated with group, only
+if group is in <span class="docutils literal">OPEN</span> state. If group is in <span class="docutils literal">CLOSING</span> or <span class="docutils literal">CLOSED</span> state,
+this methods, including <cite>create_subgroup</cite> method, will raise exception.
+If new task is created by referencing coroutine, <cite>spawn</cite> method is preferred
+to <cite>wrap</cite> method (spawn method will not create coroutine object instance
+if group is not in <span class="docutils literal">OPEN</span> state).</p>
+<p>When group's <cite>close</cite> method is called, all associated tasks, that have not
+finished their execution, are canceled and all associated subgroups are
+closed. Because methods <cite>spawn</cite> and <cite>wrap</cite> return shielded tasks, closing
+of group is only external method of requesting task cancellation (under
+assumption that reference to task is not obtained by <cite>asyncio</cite> utility methods
+such as <cite>asyncio.current_task</cite>).</p>
+<p>Implementation of <cite>hat.aio.Group</cite> provides following guarantees:</p>
+<ul class="simple">
+<li><p>only open group can spawn new tasks or create new subgroups</p></li>
+<li><p>closing of group will cancel all running tasks and closes all running
+subgroups</p></li>
+<li><p>tasks created by <cite>spawn</cite>/<cite>wrap</cite> will be cancelled at most once</p></li>
+<li><p>once group is closed, all associated tasks are <cite>done</cite> and all associated
+subgroups are closed</p></li>
+<li><p>during closing of group, cancelling running tasks is scheduled for execution
+in event loop thus giving opportunity to all previously created tasks to
+start executing their associated code</p></li>
+</ul>
+<p>To provide described behavior, group depends on following assumptions:</p>
+<ul class="simple">
+<li><p>tasks spawned by group should never suppress propagation of <cite>CancelledError</cite>
+(propagation can be temporary delayed with execution of cleanup procedures or
+means such as <cite>hat.aio.uncancellable</cite>, but each task, once cancelled, must
+finish its execution in near future).</p></li>
+<li><p>tasks spawned by group should be referenced only by returned value of
+<cite>spawn</cite>/<cite>wrap</cite> (shielded task)</p></li>
+</ul>
+</section>
+<section id="resource-lifetime">
+<h2>Resource lifetime</h2>
+<p>Usually, during its lifetime, resource transitions following major states:</p>
+<pre class="literal-block">CREATING/OPENING -&gt; CREATED/OPENED -&gt; DESTROYING/CLOSING -&gt; DESTROYED/CLOSED</pre>
+<p>where some of the resources do not have need for transitional states
+<cite>CREATING/OPENING</cite> and/or <cite>DESTROYING/CLOSING</cite>.</p>
+<p>If we assume that transition between this states is irreversible, lifetime of
+created resource can be modeled with lifetime of associated group. By pairing
+single resource instance with single group instance, current group state can
+represent current associated resource state.</p>
+<p><cite>hat-aio</cite> library provides <a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#Resource">hat.aio.Resource</a> abstract base class that can be
+used for associating resource with group:</p>
+<pre class="code python literal-block"><code>class Resource(abc.ABC):
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        await self.async_close()
+
+    &#64;property
+    &#64;abc.abstractmethod
+    def async_group(self) -&gt; 'Group':
+        &quot;&quot;&quot;Group controlling resource's lifetime.&quot;&quot;&quot;
+
+    &#64;property
+    def is_open(self) -&gt; bool:
+        return self.async_group.is_open
+
+    &#64;property
+    def is_closing(self) -&gt; bool:
+        return self.async_group.is_closing
+
+    &#64;property
+    def is_closed(self) -&gt; bool:
+        return self.async_group.is_closed
+
+    async def wait_closing(self):
+        await self.async_group.wait_closing()
+
+    async def wait_closed(self):
+        await self.async_group.wait_closed()
+
+    def close(self):
+        self.async_group.close()
+
+    async def async_close(self):
+        await self.async_group.async_close()</code></pre>
+<p>When using this class, resource should be modeled with class inheriting
+<cite>hat.aio.Resource</cite> and defining unimplemented <cite>async_group</cite> property.
+Instance of group returned by this property will be used as associated group
+which state is mirrored to resource's state.</p>
+</section>
+<section id="examples-of-resource-modeling">
+<h2>Examples of resource modeling</h2>
+<p>As additional help with <cite>hat.aio.Resource</cite> usage, <cite>hat-aio</cite> implements utility
+functions:</p>
+<ul>
+<li><p><a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#call_on_cancel">hat.aio.call_on_cancel</a></p>
+<p>Coroutine which pauses execution of associated task until task is canceled.
+Once task is canceled, function or coroutine passed to
+<cite>hat.aio.call_on_cancel</cite> as argument will be executed.</p>
+</li>
+<li><p><a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#call_on_done">hat.aio.call_on_done</a></p>
+<p>Coroutine which pauses execution of associated task until provided awaitable
+is done. Once awaitable is done, function or coroutine passed to
+<cite>hat.aio.call_on_done</cite> as argument will be executed.</p>
+</li>
+</ul>
+<p>Together with these utility function, <cite>hat.aio.Resource</cite> can be used to model
+wide range of idioms, such as:</p>
+<ol class="arabic">
+<li><p>User defined resource with new group instance</p>
+<blockquote>
+<pre class="code python literal-block"><code>class UserResource(hat.aio.Resource):
+
+    &#64;staticmethod
+    async def create() -&gt; 'UserResource':
+        resource = UserResource()
+        resource._async_group = hat.aio.Group()
+
+        ...  # initialize/create resource
+
+        return resource
+
+    &#64;property
+    def async_group(self):
+        return self._async_group</code></pre>
+</blockquote>
+<p>In this simple example, resource is associated with newly created group.
+Because <cite>UserResource</cite> inherits <cite>hat.aio.Resource</cite>, all of the lifetime
+associated methods/properties from <cite>hat.aio.Group</cite> are also available
+in <cite>UserResource</cite>. Beside inherited methods/properties, <cite>UserResource</cite>
+can implement its own custom functionality and utilize associated group
+to spawn tasks controlled by resources lifetime.</p>
+</li>
+<li><p>Resource wrapping other resource</p>
+<blockquote>
+<pre class="code python literal-block"><code>class UserResource(hat.aio.Resource):
+
+    &#64;staticmethod
+    async def create(other_resource: hat.aio.Resource) -&gt; 'UserResource':
+        resource = UserResource()
+        resource._other_resource = other_resource
+
+        ...  # initialize/create resource
+
+        return resource
+
+    &#64;property
+    def async_group(self):
+        return self._other_resource.async_group</code></pre>
+</blockquote>
+<p>Resources can be bound to groups that are not created during resource
+initialization. Usage of this functionality can be seen when resource
+wraps other resource and associate its lifetime with same group that
+is used for modeling other resource's state. Example of this behavior
+is common in modeling multi layered protocols, where higher level
+of abstraction is directly impacted with lifetime of lower level of
+abstraction.</p>
+</li>
+<li><p>Calling cleanup procedures</p>
+<blockquote>
+<pre class="code python literal-block"><code>class UserResource(hat.aio.Resource):
+
+    &#64;staticmethod
+    async def create() -&gt; 'UserResource':
+        resource = UserResource()
+        resource._async_group = hat.aio.Group()
+
+        ...  # initialize/create resource
+
+        resource.async_group.spawn(hat.aio.call_on_cancel, self._cleanup)
+
+        return resource
+
+    &#64;property
+    def async_group(self):
+        return self._async_group
+
+    async def _cleanup(self):
+        ...  # cleanup</code></pre>
+</blockquote>
+<p>By spawning <cite>hat.aio.call_on_cancel</cite> as new task, execution of cleanup code
+can be delayed to resource closing. Because this code is run during
+group's <span class="docutils literal">CLOSING</span> state, cleanup code should preform only necessary
+operations and finish execution in short time.</p>
+<blockquote>
+<aside class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Under assumption that execution of cleanup code will terminate,
+suppression of <cite>CancelledError</cite> in this case will not have negative
+impact on group's behavior (<cite>call_on_cancel</cite>/<cite>_cleanup</cite> are called
+as topmost coroutines for new task so propagation of <cite>CancelledError</cite>
+in this case is not mandatory).</p>
+</aside>
+</blockquote>
+</li>
+<li><p>Binding lifetime of one resource to other without sharing group</p>
+<blockquote>
+<pre class="code python literal-block"><code>async def create_resource() -&gt; hat.aio.Resource:
+    ...  # create resource
+
+resource1 = await create_resource()
+resource2 = await create_resource()
+
+resource1.async_group.spawn(hat.aio.call_on_cancel, resource2.async_close)
+resource1.async_group.spawn(hat.aio.call_on_done, resource2.wait_closing(), resource1.close)</code></pre>
+</blockquote>
+<p>In this example, first spawn guaranties that <cite>resource1</cite> will not be closed
+until <cite>resource2</cite> is closed. Second spawn initiates closing of <cite>resource1</cite>
+once closing of <cite>resource2</cite> is detected.</p>
+</li>
+<li><p>Associate background task to resource's lifetime</p>
+<blockquote>
+<pre class="code python literal-block"><code>class UserResource(hat.aio.Resource):
+
+    &#64;staticmethod
+    async def create() -&gt; 'UserResource':
+        resource = UserResource()
+        resource._async_group = hat.aio.Group()
+
+        ...  # initialize/create resource
+
+        resource.async_group.spawn(resource._run)
+
+        return resource
+
+    &#64;property
+    def async_group(self):
+        return self._async_group
+
+    async def _run(self):
+        try:
+            ...  # background task's code (usually some kind of loop)
+
+        finally:
+            self.close()</code></pre>
+</blockquote>
+<p>Tasks spawned by group can be short lived or long lived. Some resources
+have need to execute code during whole resource active lifetime and
+termination of that code's execution should close resource.</p>
+</li>
+</ol>
+</section>
+<section id="conclusion">
+<h2>Conclusion</h2>
+<p>Based on previous analysis, Python programs utilizing coroutines and <cite>asyncio</cite>
+library should take into account following recommendations:</p>
+<ul class="simple">
+<li><p>coroutines should follow similar best practices as regular functions in
+regard of resource management</p></li>
+<li><p>functions/coroutines should ensure resource cleanup for resources
+not crossing function execution boundaries (which are not exposed as part
+of function/coroutine interface) and thus prevent &quot;resource leaks&quot;</p></li>
+<li><p>management of resources and ownership rules should be well documented for
+each occurrence of resource as part of input arguments or return values</p></li>
+<li><p>each <cite>await</cite> is potential exit point that should be taken into account
+from resource management perspective</p></li>
+<li><p><cite>asyncio</cite> tasks are resources which must be managed the same as other
+resources (e.g. file descriptors)</p></li>
+<li><p>execution of resource cleanup procedures is important part of resource
+management which should be correctly encapsulated for internal resources</p></li>
+<li><p><cite>hat.aio.uncancellable</cite> can be used to shield tasks from cancellation
+and temporary delay raising of <cite>CancelledError</cite> in cancelled task</p></li>
+<li><p><cite>hat.aio.Group</cite> can control lifetime of tasks execution and provide
+associated resource (tasks or subgroups) cleanup</p></li>
+<li><p><cite>hat.aio.Resource</cite> can be used to model resource with lifetime defined
+by associated <cite>hat.aio.Group</cite> instance</p></li>
+</ul>
+<p>Usage of <cite>hat-aio</cite> is one of possible ways to tackle resource management
+problems. Alternative solutions should also be taken into account
+(e.g. <a class="reference external" href="https://trio.readthedocs.io">Trio</a>).</p>
+</section>
+</main>
+
+</content>
+</entry>
+<entry>
+<title>Beware of asyncio.wait_for</title>
+<link href="https://bozo.kopic.xyz/articles/asyncio_wait_for.html"/>
+<id>urn:uuid:e2a6f58e-a9c5-46b1-82d4-3b67a1a8d063</id>
+<published>2023-05-23T16:45:00Z</published>
+<updated>2023-06-01T20:20:00Z</updated>
+<content type="xhtml">
+<main id="beware-of-asyncio-wait-for">
+<h1 class="title">Beware of <cite>asyncio.wait_for</cite></h1>
+<p>Python <a class="reference external" href="https://docs.python.org/3/library/asyncio.html">asyncio</a> library provides event loop implementation with
+coroutine based interface. Usage of this library greatly improves development
+process involved in structuring applications with concurrent task executions.
+Nevertheless, this kind of problems require deep understanding of
+underling concepts, even if they are wrapped in user-friendly interface.
+Lack in understanding of implementation and interface can lead to
+hard-to-detect bugs.</p>
+<p>This article observes behavior of <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for">asyncio.wait_for</a> implementation
+and identifies some of unexpected edge cases. Understanding of
+basic <cite>asyncio</cite> concepts, such as coroutines, tasks and futures, is assumed
+(see <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and Tasks</a>).</p>
+<aside class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This article references <cite>asyncio.wait_for</cite> implementation available
+in CPython 3.11.3. Similar behavior can be observed in prior versions.</p>
+</aside>
+<section id="introduction">
+<h2>Introduction</h2>
+<p><cite>wait_for</cite> is one of basic <cite>asyncio</cite> utility functions which enables
+cancellation of task/future based on elapsed time. It accepts single
+<a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#asyncio-awaitables">awaitable</a> object and timeout. If provided awaitable object is coroutine,
+new task is created and coroutine execution is scheduled.</p>
+<p>By accepting any kind of coroutine, <cite>wait_for</cite> can be used as generic timeout
+utility. Individual coroutine implementations do not have to provide timeout
+arguments and implement additional timeout logic. Responsibility of timeout
+functionality is delegated to code calling coroutine which should be canceled
+based on timeout. Because of this inversion of responsibility, execution
+timeout can be applied even to those coroutines which are not initially
+written with timeout operation in mind.</p>
+<p><cite>asyncio</cite> provides mechanism for <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#task-cancellation">task cancellation</a> based on exception
+propagation. This generic mechanism enables cancellation of any kind of tasks
+as long as all executing coroutines propagate <a class="reference external" href="https://docs.python.org/3/library/asyncio-exceptions.html#asyncio.CancelledError">asyncio.CancelledError</a>.
+If any coroutine fails to propagate this exception, task cancellation will
+fail and often result in unwanted behavior.</p>
+<p>Because <cite>wait_for</cite> is basic function widely used by other coroutines, it
+is reasonable to expect that it will always successfully propagate
+<cite>CancelledError</cite> and therefore support correct cancellation. Nevertheless, this
+is not always the case. Following examples explore conditions when
+<cite>wait_for</cite> stops cancellation propagation.</p>
+</section>
+<section id="simple-producer-consumer">
+<h2>Simple producer/consumer</h2>
+<p>To help us in identifying this edge-cases, we will use simple producer/consumer
+model where synchronization between producer and consumer is based on
+<a class="reference external" href="https://docs.python.org/3/library/asyncio-queue.html#asyncio.Queue">asyncio.Queue</a>.</p>
+<p>Producer is modeled with coroutine which adds new entries to queue at regular
+intervals:</p>
+<pre class="code python literal-block"><code>async def produce(queue: asyncio.Queue):
+    try:
+        for i in itertools.count(1):
+            queue.put_nowait(i)
+            await asyncio.sleep(1)
+
+    finally:
+        print('closing produce')</code></pre>
+<p>Consumer is modeled with coroutine which waits for new entries. Once entry
+is available in queue, consumer will print entry to standard output and
+continue waiting for new entries indefinitely:</p>
+<pre class="code python literal-block"><code>async def consume(queue: asyncio.Queue):
+    try:
+        while True:
+            result = await queue.get()
+            print(result)
+
+    finally:
+        print('closing consume')</code></pre>
+<p>Additional &quot;work&quot; is represented with coroutine which sleeps based on
+provided delay:</p>
+<pre class="code python literal-block"><code>async def other_work(delay: float):
+    await asyncio.sleep(delay)</code></pre>
+<p>Producer and consumer are run as new tasks which are cancelled after additional
+work is done:</p>
+<pre class="code python literal-block"><code>queue = asyncio.Queue()
+
+producer = asyncio.create_task(produce(queue))
+consumer = asyncio.create_task(consume(queue))
+
+await other_work(2.5)
+
+producer.cancel()
+consumer.cancel()
+
+with contextlib.suppress(asyncio.CancelledError):
+    await producer
+
+with contextlib.suppress(asyncio.CancelledError):
+    await consumer</code></pre>
+<p>By running this code, we can expect:</p>
+<pre class="literal-block">1
+2
+3
+closing produce
+closing consume</pre>
+<p><a class="reference external" href="asyncio_wait_for/example1.py">Example 1 source code</a></p>
+</section>
+<section id="consumer-with-wait-for">
+<h2>Consumer with <cite>wait_for</cite></h2>
+<p>To introduce <cite>wait_for</cite>, we can change <cite>consume</cite> from previous example with:</p>
+<pre class="code python literal-block"><code>async def consume(queue: asyncio.Queue):
+    try:
+        while True:
+            try:
+                result = await asyncio.wait_for(queue.get(), timeout=0.5)
+                print(result)
+
+            except asyncio.TimeoutError:
+                print('timeout')
+
+    finally:
+        print('closing consume')</code></pre>
+<p>New implementation of <cite>consume</cite> waits for queued entries with provided
+timeout. If timeout occurs, <span class="docutils literal">timeout</span> is printed to standard output and
+loop starts from beginning.</p>
+<p>Running this example will result in:</p>
+<pre class="literal-block">1
+timeout
+2
+timeout
+3
+closing produce
+closing consume</pre>
+<p><a class="reference external" href="asyncio_wait_for/example2.py">Example 2 source code</a></p>
+</section>
+<section id="wait-for-ignoring-cancellation">
+<h2><cite>wait_for</cite> ignoring cancellation</h2>
+<p>In previous example, if we change <cite>other_work</cite>'s delay to <span class="docutils literal">0</span>:</p>
+<pre class="code python literal-block"><code>await other_work(0)</code></pre>
+<p>unexpected result occurs:</p>
+<pre class="literal-block">closing produce
+1
+timeout
+timeout
+timeout
+timeout
+...</pre>
+<p>Execution of this example newer finishes because consumer is not successfully
+canceled. Because <cite>wait_for</cite> is only coroutine awaited in <cite>consume</cite>, we
+can assume that <cite>wait_for</cite> did not propagate <cite>CancelledError</cite>.</p>
+<p><a class="reference external" href="asyncio_wait_for/example3.py">Example 3 source code</a></p>
+</section>
+<section id="focusing-on-consumer">
+<h2>Focusing on consumer</h2>
+<p>To focus only on consumer, we can skip producer's task creation:</p>
+<pre class="code python literal-block"><code>queue = asyncio.Queue()
+
+consumer = asyncio.create_task(consume(queue))
+
+await other_work(0)
+
+consumer.cancel()
+
+with contextlib.suppress(asyncio.CancelledError):
+    await consumer</code></pre>
+<p>Just by removing producer, consumer task is successfully canceled:</p>
+<pre class="literal-block">closing consume</pre>
+<p><a class="reference external" href="asyncio_wait_for/example4.py">Example 4 source code</a></p>
+</section>
+<section id="identifying-edge-case">
+<h2>Identifying edge-case</h2>
+<p>Because producer and consumer only interact through queue, we can expect that
+queue state is significant in occurrence of unwanted behavior. To test this
+hypothesis, instead of empty queue, non empty queue is provided to <cite>consume</cite>:</p>
+<pre class="code python literal-block"><code>queue = asyncio.Queue()
+queue.put_nowait(1)</code></pre>
+<p>This change is sufficient for introduction of unwanted behavior:</p>
+<pre class="literal-block">1
+timeout
+timeout
+timeout
+timeout
+...</pre>
+<p>This example demonstrates that behavior of <cite>wait_for</cite> is dependent of
+provided awaitable's behavior which can even result in stopping
+<cite>CancelledError</cite> propagation. To accomplish this, we have used
+<span class="docutils literal">asyncio.sleep(0)</span> as a way to schedule precise task cancellation depending
+on task creation. Same sequence of <cite>create_task</cite> and <cite>cancel</cite> calls can easily
+occur in real-world scenarios. Because of this, great care must be taken when
+<cite>wait_for</cite> is used, taking into account behavior of provided awaitable and
+possible cancellation timing of task executing <cite>wait_for</cite>.</p>
+<p><a class="reference external" href="asyncio_wait_for/example5.py">Example 5 source code</a></p>
+</section>
+<section id="when-to-expect-unsuccessful-cancellation">
+<h2>When to expect unsuccessful cancellation</h2>
+<p>As previous examples demonstrated, slight modifications in delay/timeout
+parameters can produce significant functional changes. These parameters
+are often provided as part of end-user defined configuration which makes
+their values additionally volatile.</p>
+<p>Also, order of actions, which at first sight should not have significant
+impact, can also cause failure of <cite>wait_for</cite> cancellation.</p>
+<p>Taking into account this causes, it is hard to describe single universal
+case when to expect unsuccessful cancellation. That said, most significant
+behavior, which impacts cancellation propagation is:</p>
+<blockquote>
+<p>When task running <cite>wait_for</cite> is cancelled at the &quot;same time&quot; as
+awaitable's result is made available, <cite>wait_for</cite> can return
+awaitable's result instead of rising <cite>CancelledError</cite>.</p>
+</blockquote>
+<p>In this case, concept of &quot;same time&quot; is kind of vague because of
+sequential execution of concurrent tasks. Actions, such as task cancellation
+or task finishing with result, are usually not instantaneous (executed at the
+moment <cite>cancel</cite> is called). This actions can result in appending items
+to event loop and delegating action execution to future loop iterations.</p>
+<p>To demonstrate stated edge-case, following example is provided:</p>
+<pre class="code python literal-block"><code>async def do_work(future: asyncio.Future):
+    await asyncio.sleep(1)
+    return 42
+
+loop = asyncio.get_running_loop()
+future = loop.create_future()
+
+work_task = asyncio.create_task(do_work(future))
+wait_task = asyncio.create_task(asyncio.wait_for(work_task, timeout=2))
+
+await asyncio.sleep(1)
+
+print('work task done', work_task.done())
+print('wait task done', wait_task.done())
+wait_task.cancel()
+
+try:
+    result = await wait_task
+    print(result)
+
+except asyncio.CancelledError:
+    print('cancelled')</code></pre>
+<p>Running this example results in:</p>
+<pre class="literal-block">work task done False
+wait task done False
+42</pre>
+<p>Here we can see that both <cite>do_work</cite> and main task are sleeping for
+1 second, after which <cite>wait_task</cite> is cancelled. Although, <cite>cancel</cite> method is
+called, awaiting <cite>wait_task</cite> results in <cite>do_work</cite>'s result instead of
+raising <cite>CancelledError</cite>.</p>
+<p>What is also important to notice is that both <cite>work_task</cite> and <cite>wait_task</cite>
+are not done at the time of calling <cite>cancel</cite> method. This tells us that
+we cannot reason about cancel success based on current state of these two
+tasks.</p>
+<p><a class="reference external" href="asyncio_wait_for/example6.py">Example 6 source code</a></p>
+</section>
+<section id="alternative-implementation">
+<h2>Alternative implementation</h2>
+<p>To mitigate problems which can occur when using <cite>asyncio.wait_for</cite>, <a class="reference external" href="https://hat-aio.hat-open.com/">hat-aio</a>
+implements <a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#wait_for">hat.aio.wait_for</a> which can be used as drop-in
+replacement for <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#asyncio.wait_for">asyncio.wait_for</a>. Together with propagation of
+<cite>CancelledError</cite>, this implementation provides
+<a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#CancelledWithResultError">hat.aio.CancelledWithResultError</a>. <cite>CancelledWithResultError</cite> extends
+<cite>CancelledError</cite> with additional result/exception. This result/exception
+contains awaitable's result in case when result is available and <cite>wait_for</cite>
+is cancelled at the same time. Because this exception is also <cite>CancelledError</cite>,
+all existing code catching <cite>CancelledError</cite> will continue to work.
+In cases where obtaining result is necessary, even when <cite>CancelledError</cite> is
+raised (e.g. result is associated with resource which requires explicit
+cleanup), <cite>CancelledWithResultError</cite> can be used.</p>
+<p>In the previous example, if we replace <cite>asyncio.wait_for</cite> with
+<cite>hat.aio.wait_for</cite>:</p>
+<pre class="code python literal-block"><code>wait_task = asyncio.create_task(hat.aio.wait_for(work_task, timeout=2))</code></pre>
+<p>result is:</p>
+<pre class="literal-block">work task done False
+wait task done False
+cancelled</pre>
+<p>If obtaining result is required, <cite>CancelledError</cite> can be replaced with
+<cite>CancelledWithResultError</cite>:</p>
+<pre class="code python literal-block"><code>except hat.aio.CancelledWithResultError as e:
+    print('cancelled with result', e.result)</code></pre>
+<p>which results is:</p>
+<pre class="literal-block">work task done False
+wait task done False
+cancelled with result 42</pre>
+<p><a class="reference external" href="asyncio_wait_for/example7.py">Example 7 source code</a></p>
+</section>
+</main>
+
+</content>
+</entry>
+<entry>
+<title>JSON Path</title>
+<link href="https://bozo.kopic.xyz/articles/json_path.html"/>
+<id>urn:uuid:a53f1d2e-2e36-4fb8-b2f8-6e77b1a7c50e</id>
+<published>2022-03-16T23:00:00Z</published>
+<content type="xhtml">
+<main id="json-path">
+<h1 class="title">JSON Path</h1>
+<p>Today, <a class="reference external" href="https://www.json.org">JSON</a> is widely used format for representing data structures. Together
+with encoding/decoding rules, it specifies data types which are supported by
+most of modern programming languages and platforms.</p>
+<p>JSON Path provides basic functions for referencing and manipulating
+deeply nested JSON data structure.</p>
+<p><a class="reference external" href="https://hat-open.com">Hat Open</a> provides libraries implementing this functionality:</p>
+<ul class="simple">
+<li><p>Python - <a class="reference external" href="https://github.com/hat-open/hat-json">hat-json</a></p></li>
+<li><p>JavaScript - <a class="reference external" href="https://github.com/hat-open/hat-util">&#64;hat-open/util</a></p></li>
+</ul>
+<section id="definitions">
+<h2>Definitions</h2>
+<p>Following definitions describe JSON Data, JSON Path and operations based on
+these data types. Mathematical notation is used only as &quot;neutral&quot; tool to
+describe data structures and operations without usage of any particular
+programming language or paradigm. Definitions themselves are not strict - they
+should be taken as guidelines to implementation of JSON Path libraries.</p>
+<section id="data">
+<h3>Data</h3>
+<p>JSON Data types can be defined as set <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math>:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>=</mo>
+  <mi>C</mi>
+  <mi>o</mi>
+  <mi>n</mi>
+  <mi>s</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mi>n</mi>
+  <mi>t</mi>
+  <mo>∪</mo>
+  <mi>N</mi>
+  <mi>u</mi>
+  <mi>m</mi>
+  <mi>b</mi>
+  <mi>e</mi>
+  <mi>r</mi>
+  <mo>∪</mo>
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+  <mo>∪</mo>
+  <mi>A</mi>
+  <mi>r</mi>
+  <mi>r</mi>
+  <mi>a</mi>
+  <mi>y</mi>
+  <mo>∪</mo>
+  <mi>O</mi>
+  <mi>b</mi>
+  <mi>j</mi>
+  <mi>e</mi>
+  <mi>c</mi>
+  <mi>t</mi>
+</math>
+</div>
+<p>where:</p>
+<ul>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>C</mi>
+  <mi>o</mi>
+  <mi>n</mi>
+  <mi>s</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mi>n</mi>
+  <mi>t</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>C</mi>
+  <mi>o</mi>
+  <mi>n</mi>
+  <mi>s</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mi>n</mi>
+  <mi>t</mi>
+  <mo>=</mo>
+  <mo>{</mo>
+  <mi>n</mi>
+  <mi>u</mi>
+  <mi>l</mi>
+  <mi>l</mi>
+  <mo>,</mo>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>u</mi>
+  <mi>e</mi>
+  <mo>,</mo>
+  <mi>f</mi>
+  <mi>a</mi>
+  <mi>l</mi>
+  <mi>s</mi>
+  <mi>e</mi>
+  <mo>}</mo>
+</math>
+</div>
+<p>Constant values represented with literals <span class="docutils literal">null</span>, <span class="docutils literal">true</span> and <span class="docutils literal">false</span>.</p>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>N</mi>
+  <mi>u</mi>
+  <mi>m</mi>
+  <mi>b</mi>
+  <mi>e</mi>
+  <mi>r</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>N</mi>
+  <mi>u</mi>
+  <mi>m</mi>
+  <mi>b</mi>
+  <mi>e</mi>
+  <mi>r</mi>
+  <mo>=</mo>
+  <mi>ℝ</mi>
+</math>
+</div>
+<p>Real numbers (JSON doesn't distinguish between integers and floating point
+values).</p>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+  <mo>=</mo>
+  <mo stretchy="false">(</mo>
+  <msub>
+    <mi>c</mi>
+    <mn>1</mn>
+  </msub>
+  <mo>,</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>,</mo>
+  <msub>
+    <mi>c</mi>
+    <mi>n</mi>
+  </msub>
+  <mo stretchy="false">)</mo>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <mi>n</mi>
+  <mo>≥</mo>
+  <mn>0</mn>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <msub>
+    <mi>c</mi>
+    <mi>i</mi>
+  </msub>
+  <mo>∈</mo>
+  <mtext>Unicode characters</mtext>
+</math>
+</div>
+<p>Sequence of zero or more Unicode characters including additional escaped
+sequences.</p>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>A</mi>
+  <mi>r</mi>
+  <mi>r</mi>
+  <mi>a</mi>
+  <mi>y</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>A</mi>
+  <mi>r</mi>
+  <mi>r</mi>
+  <mi>a</mi>
+  <mi>y</mi>
+  <mo>=</mo>
+  <mo stretchy="false">(</mo>
+  <msub>
+    <mi>a</mi>
+    <mn>1</mn>
+  </msub>
+  <mo>,</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>,</mo>
+  <msub>
+    <mi>a</mi>
+    <mi>n</mi>
+  </msub>
+  <mo stretchy="false">)</mo>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <mi>n</mi>
+  <mo>≥</mo>
+  <mn>0</mn>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <msub>
+    <mi>a</mi>
+    <mi>i</mi>
+  </msub>
+  <mo>∈</mo>
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math>
+</div>
+<p>Ordered set of zero or more elements which are themselves JSON Data.</p>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>O</mi>
+  <mi>b</mi>
+  <mi>j</mi>
+  <mi>e</mi>
+  <mi>c</mi>
+  <mi>t</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>O</mi>
+  <mi>b</mi>
+  <mi>j</mi>
+  <mi>e</mi>
+  <mi>c</mi>
+  <mi>t</mi>
+  <mo>=</mo>
+  <mo>{</mo>
+  <mo stretchy="false">(</mo>
+  <msub>
+    <mi>k</mi>
+    <mn>1</mn>
+  </msub>
+  <mo>,</mo>
+  <msub>
+    <mi>v</mi>
+    <mn>1</mn>
+  </msub>
+  <mo stretchy="false">)</mo>
+  <mo>,</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>,</mo>
+  <mo stretchy="false">(</mo>
+  <msub>
+    <mi>k</mi>
+    <mi>n</mi>
+  </msub>
+  <mo>,</mo>
+  <msub>
+    <mi>v</mi>
+    <mi>n</mi>
+  </msub>
+  <mo stretchy="false">)</mo>
+  <mo>}</mo>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <mi>n</mi>
+  <mo>≥</mo>
+  <mn>0</mn>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <msub>
+    <mi>k</mi>
+    <mi>i</mi>
+  </msub>
+  <mo>∈</mo>
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <msub>
+    <mi>v</mi>
+    <mi>i</mi>
+  </msub>
+  <mo>∈</mo>
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math>
+</div>
+<p>Associative sequence of key/value pairs where keys are strings and
+values are one of JSON Data</p>
+</li>
+</ul>
+</section>
+<section id="path">
+<h3>Path</h3>
+<p>JSON Path is reference to part of composite JSON data. It is itself
+represented as JSON Data and can be defined as set <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>P</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+</math>:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>P</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo>=</mo>
+  <mi>I</mi>
+  <mi>n</mi>
+  <mi>t</mi>
+  <mi>e</mi>
+  <mi>g</mi>
+  <mi>e</mi>
+  <mi>r</mi>
+  <mo>∪</mo>
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+  <mo>∪</mo>
+  <mi>P</mi>
+  <mi>A</mi>
+  <mi>r</mi>
+  <mi>r</mi>
+  <mi>a</mi>
+  <mi>y</mi>
+</math>
+</div>
+<p>where:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mtable class="ams-align" displaystyle="true">
+    <mtr>
+      <mtd>
+        <mi>I</mi>
+        <mi>n</mi>
+        <mi>t</mi>
+        <mi>e</mi>
+        <mi>g</mi>
+        <mi>e</mi>
+        <mi>r</mi>
+      </mtd>
+      <mtd>
+        <mo>=</mo>
+        <msub>
+          <mi>ℕ</mi>
+          <mn>0</mn>
+        </msub>
+      </mtd>
+    </mtr>
+    <mtr>
+      <mtd>
+        <mi>P</mi>
+        <mi>A</mi>
+        <mi>r</mi>
+        <mi>r</mi>
+        <mi>a</mi>
+        <mi>y</mi>
+      </mtd>
+      <mtd>
+        <mo>=</mo>
+        <mo stretchy="false">(</mo>
+        <msub>
+          <mi>a</mi>
+          <mn>1</mn>
+        </msub>
+        <mo>,</mo>
+        <mo>.</mo>
+        <mo>.</mo>
+        <mo>.</mo>
+        <mo>,</mo>
+        <msub>
+          <mi>a</mi>
+          <mi>n</mi>
+        </msub>
+        <mo stretchy="false">)</mo>
+        <mo>,</mo>
+        <mspace width="1em"></mspace>
+        <mi>n</mi>
+        <mo>≥</mo>
+        <mn>0</mn>
+        <mo>,</mo>
+        <mspace width="1em"></mspace>
+        <msub>
+          <mi>a</mi>
+          <mi>i</mi>
+        </msub>
+        <mo>∈</mo>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+      </mtd>
+    </mtr>
+  </mtable>
+</math>
+</div>
+<p>In following definitions, we will use operator <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>&amp;</mi>
+</math> as reference to
+data and operator <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mo>*</mo>
+</math> as value of referenced data.</p>
+<p>Algorithm, used as basis for resolving path references, can be represented
+with function <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>f</mi>
+</math>:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>f</mi>
+  <mo stretchy="false">(</mo>
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo stretchy="false">)</mo>
+  <mo>=</mo>
+  <mrow>
+    <mo rspace="0.17em">{</mo>
+    <mtable columnalign="left" class="cases">
+      <mtr>
+        <mtd>
+          <mi>r</mi>
+          <mi>e</mi>
+          <msub>
+            <mi>f</mi>
+            <mrow>
+              <mi>i</mi>
+              <mi>n</mi>
+              <mi>t</mi>
+            </mrow>
+          </msub>
+          <mo stretchy="false">(</mo>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>,</mo>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo stretchy="false">)</mo>
+        </mtd>
+        <mtd>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>∈</mo>
+          <mi>I</mi>
+          <mi>n</mi>
+          <mi>t</mi>
+          <mi>e</mi>
+          <mi>g</mi>
+          <mi>e</mi>
+          <mi>r</mi>
+        </mtd>
+      </mtr>
+      <mtr>
+        <mtd>
+          <mi>r</mi>
+          <mi>e</mi>
+          <msub>
+            <mi>f</mi>
+            <mrow>
+              <mi>s</mi>
+              <mi>t</mi>
+              <mi>r</mi>
+            </mrow>
+          </msub>
+          <mo stretchy="false">(</mo>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>,</mo>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo stretchy="false">)</mo>
+        </mtd>
+        <mtd>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>∈</mo>
+          <mi>S</mi>
+          <mi>t</mi>
+          <mi>r</mi>
+          <mi>i</mi>
+          <mi>n</mi>
+          <mi>g</mi>
+        </mtd>
+      </mtr>
+      <mtr>
+        <mtd>
+          <mi>r</mi>
+          <mi>e</mi>
+          <msub>
+            <mi>f</mi>
+            <mrow>
+              <mi>a</mi>
+              <mi>r</mi>
+              <mi>r</mi>
+            </mrow>
+          </msub>
+          <mo stretchy="false">(</mo>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>,</mo>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo stretchy="false">)</mo>
+        </mtd>
+        <mtd>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>∈</mo>
+          <mi>P</mi>
+          <mi>A</mi>
+          <mi>r</mi>
+          <mi>r</mi>
+          <mi>a</mi>
+          <mi>y</mi>
+        </mtd>
+      </mtr>
+    </mtable>
+  </mrow>
+</math>
+</div>
+<p>where:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>∈</mo>
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo>∈</mo>
+  <mi>P</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+</math>
+</div>
+<p>Usage of different data types as paths, enables one to reference data in
+different data structures:</p>
+<ul>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo>∈</mo>
+  <mi>I</mi>
+  <mi>n</mi>
+  <mi>t</mi>
+  <mi>e</mi>
+  <mi>g</mi>
+  <mi>e</mi>
+  <mi>r</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>r</mi>
+  <mi>e</mi>
+  <msub>
+    <mi>f</mi>
+    <mrow>
+      <mi>i</mi>
+      <mi>n</mi>
+      <mi>t</mi>
+    </mrow>
+  </msub>
+  <mo stretchy="false">(</mo>
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo stretchy="false">)</mo>
+  <mo>=</mo>
+  <mrow>
+    <mo rspace="0.17em">{</mo>
+    <mtable columnalign="left" class="cases">
+      <mtr>
+        <mtd>
+          <mi>&amp;</mi>
+          <msub>
+            <mi>a</mi>
+            <mrow>
+              <mi>p</mi>
+              <mi>a</mi>
+              <mi>t</mi>
+              <mi>h</mi>
+              <mo>+</mo>
+              <mn>1</mn>
+            </mrow>
+          </msub>
+        </mtd>
+        <mtd>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>∈</mo>
+          <mi>A</mi>
+          <mi>r</mi>
+          <mi>r</mi>
+          <mi>a</mi>
+          <mi>y</mi>
+          <mo>,</mo>
+          <mspace width="1em"></mspace>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>=</mo>
+          <mo stretchy="false">(</mo>
+          <msub>
+            <mi>a</mi>
+            <mn>1</mn>
+          </msub>
+          <mo>,</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>,</mo>
+          <msub>
+            <mi>a</mi>
+            <mi>n</mi>
+          </msub>
+          <mo stretchy="false">)</mo>
+          <mo>,</mo>
+          <mspace width="1em"></mspace>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>&lt;</mo>
+          <mi>n</mi>
+        </mtd>
+      </mtr>
+      <mtr>
+        <mtd>
+          <mi>&amp;</mi>
+          <mi>n</mi>
+          <mi>u</mi>
+          <mi>l</mi>
+          <mi>l</mi>
+        </mtd>
+        <mtd>
+          <mtext>otherwise</mtext>
+        </mtd>
+      </mtr>
+    </mtable>
+  </mrow>
+</math>
+</div>
+<p>Integer paths are used for referencing elements of array. If
+referenced element doesn't exist or provided data is not an array,
+neutral <span class="docutils literal">null</span> element is referenced.</p>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo>∈</mo>
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>r</mi>
+  <mi>e</mi>
+  <msub>
+    <mi>f</mi>
+    <mrow>
+      <mi>s</mi>
+      <mi>t</mi>
+      <mi>r</mi>
+    </mrow>
+  </msub>
+  <mo stretchy="false">(</mo>
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo stretchy="false">)</mo>
+  <mo>=</mo>
+  <mrow>
+    <mo rspace="0.17em">{</mo>
+    <mtable columnalign="left" class="cases">
+      <mtr>
+        <mtd>
+          <mi>&amp;</mi>
+          <msub>
+            <mi>v</mi>
+            <mi>i</mi>
+          </msub>
+        </mtd>
+        <mtd>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>∈</mo>
+          <mi>O</mi>
+          <mi>b</mi>
+          <mi>j</mi>
+          <mi>e</mi>
+          <mi>c</mi>
+          <mi>t</mi>
+          <mo>,</mo>
+          <mspace width="1em"></mspace>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>=</mo>
+          <mo>{</mo>
+          <mo stretchy="false">(</mo>
+          <msub>
+            <mi>k</mi>
+            <mn>1</mn>
+          </msub>
+          <mo>,</mo>
+          <msub>
+            <mi>v</mi>
+            <mn>1</mn>
+          </msub>
+          <mo stretchy="false">)</mo>
+          <mo>,</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>,</mo>
+          <mo stretchy="false">(</mo>
+          <msub>
+            <mi>k</mi>
+            <mi>n</mi>
+          </msub>
+          <mo>,</mo>
+          <msub>
+            <mi>v</mi>
+            <mi>n</mi>
+          </msub>
+          <mo stretchy="false">)</mo>
+          <mo>}</mo>
+          <mo>,</mo>
+          <mspace width="1em"></mspace>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>=</mo>
+          <msub>
+            <mi>k</mi>
+            <mi>i</mi>
+          </msub>
+        </mtd>
+      </mtr>
+      <mtr>
+        <mtd>
+          <mi>&amp;</mi>
+          <mi>n</mi>
+          <mi>u</mi>
+          <mi>l</mi>
+          <mi>l</mi>
+        </mtd>
+        <mtd>
+          <mtext>otherwise</mtext>
+        </mtd>
+      </mtr>
+    </mtable>
+  </mrow>
+</math>
+</div>
+<p>String paths reference object entries based on object's key values.
+If referenced key doesn't exist or provided data is not an object,
+neutral <span class="docutils literal">null</span> element is referenced.</p>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo>∈</mo>
+  <mi>P</mi>
+  <mi>A</mi>
+  <mi>r</mi>
+  <mi>r</mi>
+  <mi>a</mi>
+  <mi>y</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>r</mi>
+  <mi>e</mi>
+  <msub>
+    <mi>f</mi>
+    <mrow>
+      <mi>a</mi>
+      <mi>r</mi>
+      <mi>r</mi>
+    </mrow>
+  </msub>
+  <mo stretchy="false">(</mo>
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo stretchy="false">)</mo>
+  <mo>=</mo>
+  <mrow>
+    <mo rspace="0.17em">{</mo>
+    <mtable columnalign="left" class="cases">
+      <mtr>
+        <mtd>
+          <mi>&amp;</mi>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+        </mtd>
+        <mtd>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>=</mo>
+          <mi>∅</mi>
+        </mtd>
+      </mtr>
+      <mtr>
+        <mtd>
+          <mi>r</mi>
+          <mi>e</mi>
+          <mi>f</mi>
+          <mo stretchy="false">(</mo>
+          <mo>*</mo>
+          <mi>r</mi>
+          <mi>e</mi>
+          <mi>f</mi>
+          <mo stretchy="false">(</mo>
+          <mi>d</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>a</mi>
+          <mo>,</mo>
+          <msub>
+            <mi>a</mi>
+            <mn>1</mn>
+          </msub>
+          <mo stretchy="false">)</mo>
+          <mo>,</mo>
+          <mo stretchy="false">(</mo>
+          <msub>
+            <mi>a</mi>
+            <mn>2</mn>
+          </msub>
+          <mo>,</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>,</mo>
+          <msub>
+            <mi>a</mi>
+            <mi>n</mi>
+          </msub>
+          <mo stretchy="false">)</mo>
+          <mo stretchy="false">)</mo>
+        </mtd>
+        <mtd>
+          <mi>p</mi>
+          <mi>a</mi>
+          <mi>t</mi>
+          <mi>h</mi>
+          <mo>=</mo>
+          <mo stretchy="false">(</mo>
+          <msub>
+            <mi>a</mi>
+            <mn>1</mn>
+          </msub>
+          <mo>,</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>.</mo>
+          <mo>,</mo>
+          <msub>
+            <mi>a</mi>
+            <mi>n</mi>
+          </msub>
+          <mo stretchy="false">)</mo>
+        </mtd>
+      </mtr>
+    </mtable>
+  </mrow>
+</math>
+</div>
+<p>Array paths are used for composition of other paths. Array
+elements are used for recursive path application on result
+of previous path application.</p>
+</li>
+</ul>
+</section>
+<section id="normalization">
+<h3>Normalization</h3>
+<p>Each path can be normalized - represented as array of strings and integers:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>N</mi>
+  <mi>P</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo>=</mo>
+  <mo stretchy="false">(</mo>
+  <msub>
+    <mi>a</mi>
+    <mn>1</mn>
+  </msub>
+  <mo>,</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>.</mo>
+  <mo>,</mo>
+  <msub>
+    <mi>a</mi>
+    <mi>n</mi>
+  </msub>
+  <mo stretchy="false">)</mo>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <mi>n</mi>
+  <mo>≥</mo>
+  <mn>0</mn>
+  <mo>,</mo>
+  <mspace width="1em"></mspace>
+  <msub>
+    <mi>a</mi>
+    <mi>i</mi>
+  </msub>
+  <mo>∈</mo>
+  <mi>I</mi>
+  <mi>n</mi>
+  <mi>t</mi>
+  <mi>e</mi>
+  <mi>g</mi>
+  <mi>e</mi>
+  <mi>r</mi>
+  <mo>∪</mo>
+  <mi>S</mi>
+  <mi>t</mi>
+  <mi>r</mi>
+  <mi>i</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+</math>
+</div>
+<p>Path normalization is defined as function <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>n</mi>
+  <mi>o</mi>
+  <mi>r</mi>
+  <mi>m</mi>
+</math>:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mtable class="ams-align" displaystyle="true">
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>n</mi>
+        <mi>o</mi>
+        <mi>r</mi>
+        <mi>m</mi>
+        <mo>∶</mo>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>→</mo>
+        <mi>N</mi>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+      </mtd>
+    </mtr>
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>n</mi>
+        <mi>o</mi>
+        <mi>r</mi>
+        <mi>m</mi>
+        <mo stretchy="false">(</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo stretchy="false">)</mo>
+        <mo>=</mo>
+        <mrow>
+          <mo rspace="0.17em">{</mo>
+          <mtable columnalign="left" class="cases">
+            <mtr>
+              <mtd>
+                <mo stretchy="false">(</mo>
+                <mi>p</mi>
+                <mi>a</mi>
+                <mi>t</mi>
+                <mi>h</mi>
+                <mo stretchy="false">)</mo>
+              </mtd>
+              <mtd>
+                <mi>p</mi>
+                <mi>a</mi>
+                <mi>t</mi>
+                <mi>h</mi>
+                <mo>∈</mo>
+                <mi>I</mi>
+                <mi>n</mi>
+                <mi>t</mi>
+                <mi>e</mi>
+                <mi>g</mi>
+                <mi>e</mi>
+                <mi>r</mi>
+                <mo>∪</mo>
+                <mi>S</mi>
+                <mi>t</mi>
+                <mi>r</mi>
+                <mi>i</mi>
+                <mi>n</mi>
+                <mi>g</mi>
+              </mtd>
+            </mtr>
+            <mtr>
+              <mtd>
+                <mi>∅</mi>
+              </mtd>
+              <mtd>
+                <mi>p</mi>
+                <mi>a</mi>
+                <mi>t</mi>
+                <mi>h</mi>
+                <mo>∈</mo>
+                <mi>P</mi>
+                <mi>A</mi>
+                <mi>r</mi>
+                <mi>r</mi>
+                <mi>a</mi>
+                <mi>y</mi>
+                <mo>,</mo>
+                <mspace width="1em"></mspace>
+                <mi>p</mi>
+                <mi>a</mi>
+                <mi>t</mi>
+                <mi>h</mi>
+                <mo>=</mo>
+                <mi>∅</mi>
+              </mtd>
+            </mtr>
+            <mtr>
+              <mtd>
+                <mi>n</mi>
+                <mi>o</mi>
+                <mi>r</mi>
+                <mi>m</mi>
+                <mo stretchy="false">(</mo>
+                <msub>
+                  <mi>p</mi>
+                  <mn>1</mn>
+                </msub>
+                <mo stretchy="false">)</mo>
+                <mo>∪</mo>
+                <mi>n</mi>
+                <mi>o</mi>
+                <mi>r</mi>
+                <mi>m</mi>
+                <mo stretchy="false">(</mo>
+                <mo stretchy="false">(</mo>
+                <msub>
+                  <mi>p</mi>
+                  <mn>2</mn>
+                </msub>
+                <mo>,</mo>
+                <mo>.</mo>
+                <mo>.</mo>
+                <mo>.</mo>
+                <mo>,</mo>
+                <msub>
+                  <mi>p</mi>
+                  <mi>n</mi>
+                </msub>
+                <mo stretchy="false">)</mo>
+                <mo stretchy="false">)</mo>
+              </mtd>
+              <mtd>
+                <mi>p</mi>
+                <mi>a</mi>
+                <mi>t</mi>
+                <mi>h</mi>
+                <mo>∈</mo>
+                <mi>P</mi>
+                <mi>A</mi>
+                <mi>r</mi>
+                <mi>r</mi>
+                <mi>a</mi>
+                <mi>y</mi>
+                <mo>,</mo>
+                <mspace width="1em"></mspace>
+                <mi>p</mi>
+                <mi>a</mi>
+                <mi>t</mi>
+                <mi>h</mi>
+                <mo>=</mo>
+                <mo stretchy="false">(</mo>
+                <msub>
+                  <mi>p</mi>
+                  <mn>1</mn>
+                </msub>
+                <mo>,</mo>
+                <mo>.</mo>
+                <mo>.</mo>
+                <mo>.</mo>
+                <mo>,</mo>
+                <msub>
+                  <mi>p</mi>
+                  <mi>n</mi>
+                </msub>
+                <mo stretchy="false">)</mo>
+              </mtd>
+            </mtr>
+          </mtable>
+        </mrow>
+      </mtd>
+    </mtr>
+  </mtable>
+</math>
+</div>
+<p>When used as argument to <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>f</mi>
+</math> function, normalized path is
+equivalent to its original non-normalized form:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>f</mi>
+  <mo stretchy="false">(</mo>
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo stretchy="false">)</mo>
+  <mo>=</mo>
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>f</mi>
+  <mo stretchy="false">(</mo>
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>,</mo>
+  <mi>n</mi>
+  <mi>o</mi>
+  <mi>r</mi>
+  <mi>m</mi>
+  <mo stretchy="false">(</mo>
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+  <mo stretchy="false">)</mo>
+  <mo stretchy="false">)</mo>
+</math>
+</div>
+<p>These property of normalized path is useful in case of path functions'
+implementations. By normalizing path prior to its usage, implementation
+or <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>f</mi>
+</math> can be based on sequential reduction of provided data instead
+of recursive application.</p>
+</section>
+<section id="functions">
+<h3>Functions</h3>
+<ul>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>g</mi>
+  <mi>e</mi>
+  <mi>t</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mtable class="ams-align" displaystyle="true">
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>g</mi>
+        <mi>e</mi>
+        <mi>t</mi>
+        <mo>∶</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>×</mo>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>→</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+      </mtd>
+    </mtr>
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>g</mi>
+        <mi>e</mi>
+        <mi>t</mi>
+        <mo stretchy="false">(</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>,</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo stretchy="false">)</mo>
+        <mo>=</mo>
+        <mi>v</mi>
+        <mi>a</mi>
+        <mi>l</mi>
+        <mi>u</mi>
+        <mi>e</mi>
+      </mtd>
+    </mtr>
+  </mtable>
+</math>
+</div>
+<p>Function <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>g</mi>
+  <mi>e</mi>
+  <mi>t</mi>
+</math> is used for obtaining part of <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math> structure
+referenced by <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+</math>.</p>
+<p>Examples:</p>
+<pre class="literal-block">data = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, []]}
+
+get(data, []) = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, []]}
+get(data, &quot;a&quot;) = [1, 2, {&quot;b&quot;: true}, []]
+get(data, [&quot;a&quot;, 0]) = 1
+get(data, [&quot;a&quot;, 2, &quot;b&quot;]) = true
+get(data, [&quot;a&quot;, [2, [&quot;b&quot;]]]) = true
+get(data, [[], [[]]]) = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, []]}
+get(data, 0) = null
+get(data, &quot;b&quot;) = null
+get(data, [&quot;a&quot;, 4]) = null</pre>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>s</mi>
+  <mi>e</mi>
+  <mi>t</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mtable class="ams-align" displaystyle="true">
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>s</mi>
+        <mi>e</mi>
+        <mi>t</mi>
+        <mo>∶</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>×</mo>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>×</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>→</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+      </mtd>
+    </mtr>
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>s</mi>
+        <mi>e</mi>
+        <mi>t</mi>
+        <mo stretchy="false">(</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>,</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>,</mo>
+        <mi>v</mi>
+        <mi>a</mi>
+        <mi>l</mi>
+        <mi>u</mi>
+        <mi>e</mi>
+        <mo stretchy="false">)</mo>
+        <mo>=</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>'</mo>
+      </mtd>
+    </mtr>
+  </mtable>
+</math>
+</div>
+<p>Function <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>s</mi>
+  <mi>e</mi>
+  <mi>t</mi>
+</math> is used for creating new data structure <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math>.
+Difference, between <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math> and <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math>, is in part of data
+structure referenced by <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+</math>. In <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math> this part is
+replaced with <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>v</mi>
+  <mi>a</mi>
+  <mi>l</mi>
+  <mi>u</mi>
+  <mi>e</mi>
+</math>.</p>
+<p>Edge cases:</p>
+<ul>
+<li><p><cite>array index out of bound</cite></p>
+<p>If integer path references array with length less than path,
+additional <span class="docutils literal">null</span> elements are created so that referenced
+array element can be set to provided value.</p>
+</li>
+<li><p><cite>object key not available</cite></p>
+<p>If string path references object which doesn't contain entry
+with key equal to path, new entry is created.</p>
+</li>
+<li><p><cite>path type doesn't match data type</cite></p>
+<p>If integer path references data which is not array, data is
+replaced with empty array and previously described <cite>array index out
+of bound</cite> edge case is applied.</p>
+<p>If string path references data which is not object, data is
+replaced with empty object and previously described <cite>object key not
+available</cite> edge case is applied.</p>
+<p>Examples:</p>
+<pre class="literal-block">data = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, []]}
+
+set(data, [&quot;a&quot;, 2, &quot;b&quot;], false) = {&quot;a&quot;: [1, 2, {&quot;b&quot;: false}, []]}
+set(data, &quot;a&quot;, 42) = {&quot;a&quot;: 42}
+set(data, [&quot;a&quot;, [3], 0], 42) = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, [42]]}
+set(data, [&quot;a&quot;, [3], 1], 42) = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, [null, 42]]}
+set(data, [], 42) = 42
+set(null, [1, &quot;a&quot;, 2], 42) = [null, {&quot;a&quot;: [null, null, 42]}]</pre>
+</li>
+</ul>
+</li>
+<li><p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>m</mi>
+  <mi>o</mi>
+  <mi>v</mi>
+  <mi>e</mi>
+</math></p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mtable class="ams-align" displaystyle="true">
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>r</mi>
+        <mi>e</mi>
+        <mi>m</mi>
+        <mi>o</mi>
+        <mi>v</mi>
+        <mi>e</mi>
+        <mo>∶</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>×</mo>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>→</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+      </mtd>
+    </mtr>
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>r</mi>
+        <mi>e</mi>
+        <mi>m</mi>
+        <mi>o</mi>
+        <mi>v</mi>
+        <mi>e</mi>
+        <mo stretchy="false">(</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>,</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo stretchy="false">)</mo>
+        <mo>=</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>'</mo>
+      </mtd>
+    </mtr>
+  </mtable>
+</math>
+</div>
+<p>Function <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>r</mi>
+  <mi>e</mi>
+  <mi>m</mi>
+  <mi>o</mi>
+  <mi>v</mi>
+  <mi>e</mi>
+</math> is used for creating new data structure
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math> based on provided <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math>. Difference, between
+<math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math> and <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math>, is in part of data structure referenced
+by <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>p</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>h</mi>
+</math>. In <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math> this part is omitted.</p>
+<p>In edge cases:</p>
+<ul class="simple">
+<li><p>array index out of bound</p></li>
+<li><p>object key not available</p></li>
+<li><p>path type doesn't match data type</p></li>
+</ul>
+<p><math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>'</mo>
+</math> is same as <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>d</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math>.</p>
+<p>Examples:</p>
+<pre class="literal-block">data = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, []]}
+
+delete(data, [&quot;a&quot;, 1]) = {&quot;a&quot;: [1, {&quot;b&quot;: true}, []]}
+delete(data, []) = null
+delete(data, [&quot;a&quot;, 2, &quot;b&quot;]) = {&quot;a&quot;: [1, 2, {}, []]}
+delete(data, &quot;b&quot;) = {&quot;a&quot;: [1, 2, {&quot;b&quot;: true}, []]}</pre>
+</li>
+</ul>
+<p>With this basic functions, other specialized functions can be defined.
+Example of commonly used derived function is <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>c</mi>
+  <mi>h</mi>
+  <mi>a</mi>
+  <mi>n</mi>
+  <mi>g</mi>
+  <mi>e</mi>
+</math>:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mtable class="ams-align" displaystyle="true">
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>c</mi>
+        <mi>h</mi>
+        <mi>a</mi>
+        <mi>n</mi>
+        <mi>g</mi>
+        <mi>e</mi>
+        <mo>∶</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>×</mo>
+        <mi>P</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>×</mo>
+        <mo stretchy="false">(</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>→</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo stretchy="false">)</mo>
+        <mo>→</mo>
+        <mi>D</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+      </mtd>
+    </mtr>
+    <mtr>
+      <mtd></mtd>
+      <mtd>
+        <mi>c</mi>
+        <mi>h</mi>
+        <mi>a</mi>
+        <mi>n</mi>
+        <mi>g</mi>
+        <mi>e</mi>
+        <mo stretchy="false">(</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>,</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>,</mo>
+        <mi>f</mi>
+        <mo stretchy="false">)</mo>
+        <mo>=</mo>
+        <mi>s</mi>
+        <mi>e</mi>
+        <mi>t</mi>
+        <mo stretchy="false">(</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>,</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo>,</mo>
+        <mi>f</mi>
+        <mo stretchy="false">(</mo>
+        <mi>g</mi>
+        <mi>e</mi>
+        <mi>t</mi>
+        <mo stretchy="false">(</mo>
+        <mi>d</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>a</mi>
+        <mo>,</mo>
+        <mi>p</mi>
+        <mi>a</mi>
+        <mi>t</mi>
+        <mi>h</mi>
+        <mo stretchy="false">)</mo>
+        <mo stretchy="false">)</mo>
+        <mo stretchy="false">)</mo>
+      </mtd>
+    </mtr>
+  </mtable>
+</math>
+</div>
+<p>where <math xmlns="http://www.w3.org/1998/Math/MathML">
+  <mi>f</mi>
+</math> is arbitrary data transformation function:</p>
+<div>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+  <mi>f</mi>
+  <mo>∶</mo>
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+  <mo>→</mo>
+  <mi>D</mi>
+  <mi>a</mi>
+  <mi>t</mi>
+  <mi>a</mi>
+</math>
+</div>
+<p>It should be noted that all of these functions are &quot;pure functions&quot; that
+shouldn't make in-place changes of provided data arguments. Implementations
+usually take this into account by optimizing re usability of shared data.</p>
+</section>
+</section>
+<section id="characteristics">
+<h2>Characteristics</h2>
+<p>Some of the interesting characteristics of JSON Path approach to JSON Data
+referencing are:</p>
+<ul>
+<li><p>full JSON Data coverage</p>
+<p>Paths enable operations on all kinds of JSON Data without additional
+constrains on structural complexity or used data types.</p>
+</li>
+<li><p>get/set operations</p>
+<p>Same path instances can be used for both retrieval and change of referenced
+data. This is result of single path reference resolving algorithm, used
+as basis for get and set implementation.</p>
+</li>
+<li><p>flexible path composition</p>
+<p>Support for path normalization provides opportunities for composition
+of multiple path parts into single path.</p>
+<p>Example:</p>
+<pre class="literal-block">p1 = [ ..first-path.. ]
+p2 = [ ..second-path.. ]
+p3 = [ ..third-path.. ]
+
+[p1, p2, p3] ≅ [p1, [p2, [p3]]] ≅ [p1, [p2, p3]] ≅ [[p1, p2], p3]</pre>
+</li>
+<li><p>safe retrieval of deeply nested optional elements</p>
+<p>In case of complex array paths, if part of referenced data is not
+available, path traversal can be short-circuited without additional
+repetitive checking.</p>
+<p>Example:</p>
+<pre class="literal-block">data = {'a': {'b': {'c': 123}}}
+path = ['a', 'd', 'c']
+get(data, path) == null</pre>
+</li>
+<li><p>JSON Path is subset of JSON Data</p>
+<p>This property enables easy serialization and exchange of paths. Also,
+all path functions can be used for operations on paths themselves.</p>
+</li>
+<li><p>implementation simplicity</p>
+<p>With representation of paths as JSON Data and normalization into single
+&quot;flat&quot; array, no additional parsing is required and implementation
+can be based on optimal short-circuited iteration. This enables
+efficient implementations in wide range of modern programming languages
+and platforms.</p>
+</li>
+</ul>
+</section>
+<section id="python-implementation">
+<h2>Python implementation</h2>
+<p>Python implementation of JSON Path functions is available as part of
+<cite>hat-json</cite> library.</p>
+<p>Function signature is similar to abstract definition of JSON Path
+functions. Notable differences are:</p>
+<ul class="simple">
+<li><p>possibility to define alternative neutral <cite>null</cite> value in case of <cite>get</cite>
+function</p></li>
+<li><p>function <cite>set</cite> is named <cite>set_</cite> to avoid name clash with builtin function</p></li>
+</ul>
+<pre class="code python literal-block"><code>Array = typing.List['Data']
+Object = typing.Dict[str, 'Data']
+Data = typing.Union[None, bool, int, float, str, Array, Object]
+Path = typing.Union[int, str, typing.List['Path']]
+
+def get(data: Data, path: Path, default: typing.Optional[Data] = None) -&gt; Data:
+    ...
+
+def set_(data: Data, path: Path, value: Data) -&gt; Data:
+    ...
+
+def remove(data: Data, path: Path) -&gt; Data:
+    ...</code></pre>
+</section>
+<section id="javascript-implementation">
+<h2>JavaScript implementation</h2>
+<p>JavaScript implementation of JSON Path functions is available as part of
+<cite>&#64;hat-open/util</cite> library.</p>
+<p>This implementation provides full functionality of JSON Path definition
+with some changes to API itself. Most of these changes are made to enable
+more functional programming style:</p>
+<ul class="simple">
+<li><p>all functions are curried</p></li>
+<li><p><cite>delete</cite> is renamed to <cite>omit</cite></p></li>
+<li><p>position of arguments are changed</p></li>
+</ul>
+<pre class="code javascript literal-block"><code>// get : Path -&gt; Data -&gt; Data
+function get(path, data) {
+    // return value
+}
+
+// change : Path -&gt; (Data -&gt; Data) -&gt; Data
+function change(path, fn, data) {
+    // return new data
+}
+
+// set : Path -&gt; Data -&gt; Data -&gt; Data
+function set(path, value, data) {
+    // return new data
+}
+
+// omit : Path -&gt; Data -&gt; Data
+function omit(path, data) {
+    // return new data
+}</code></pre>
+</section>
+<section id="comparison-to-other-json-data-functions">
+<h2>Comparison to other JSON Data functions</h2>
+<p>Referencing parts of deeply nested complex JSON Data structures is the well
+known problem. There exists a lot of different applications and libraries
+that try to provide a solution to this problem.</p>
+<p>To compare previously described JSON Path to alternatives, we can group
+other implementations based on some of theirs significant characteristics:</p>
+<ul>
+<li><p>string based paths</p>
+<p>Some of the libraries use paths encoded as strings. Usually, this
+encodings consist of custom rules that try to mimic <a class="reference external" href="https://en.wikipedia.org/wiki/XPath">XPath</a> or JavaScript
+notation.</p>
+<p>Main benefit of this approach is condensed path definition which
+is usually well suited for usage as command line arguments to
+applications.</p>
+<p>Drawbacks of this approach are:</p>
+<ul class="simple">
+<li><p>additional path string decoder</p></li>
+<li><p>variety of custom non-standard notations</p></li>
+<li><p>difficult composition of path segments</p></li>
+</ul>
+<p>Some of the notable implementations:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://goessner.net/articles/JsonPath">JSONPath</a></p></li>
+<li><p><a class="reference external" href="https://stedolan.github.io/jq">jq</a></p></li>
+<li><p><a class="reference external" href="https://lodash.com">lodash</a> (with limited array based composition)</p></li>
+</ul>
+</li>
+<li><p>lenses</p>
+<p>Usage of lens functions if approach popularized by Haskell <a class="reference external" href="https://hackage.haskell.org/package/lens">Lens library</a>.
+It is based on functions that can be used as references to parts of
+composite data.</p>
+<p>Advantage of lenses is mostly associated with functional programming
+style and possibility of lens composition by usage of function
+composition.</p>
+<p>Drawback of this approach are:</p>
+<ul class="simple">
+<li><p>tightly dependent on specific programming language function definitions</p></li>
+<li><p>not appropriate for serialization</p></li>
+</ul>
+<p>Some of the notable implementations:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://ramdajs.com/docs/#lens">ramda.js</a></p></li>
+</ul>
+</li>
+</ul>
+</section>
+</main>
+<footer>
+<p>Thanks to Jakov Krstulovic Opara for review and suggestions.</p>
+</footer>
+
+</content>
+</entry>
+<entry>
+<title>Python asyncio application lifetime</title>
+<link href="https://bozo.kopic.xyz/articles/run_asyncio.html"/>
+<id>urn:uuid:feef4951-2938-4ddf-b52b-ab35604749e5</id>
+<published>2020-07-10T00:00:00Z</published>
+<updated>2022-08-29T11:32:00Z</updated>
+<content type="xhtml">
+<main id="python-asyncio-application-lifetime">
+<h1 class="title">Python <cite>asyncio</cite> application lifetime</h1>
+<p>This article explores different lifetime problems associated with running
+long-living Python applications.</p>
+<section id="classic-application-lifetime">
+<h2>Classic application lifetime</h2>
+<p>Most of Python applications are implemented with simple pattern:</p>
+<pre class="code python literal-block"><code>import sys
+
+def main():
+    ...
+
+if __name__ == '__main__':
+    sys.exit(main())</code></pre>
+<p>If this pattern is applied, execution of application is confined into execution
+of single function <cite>main</cite>. This means that start of <cite>main</cite> execution is
+considered application startup and end of <cite>main</cite> execution is considered
+end of application execution.</p>
+<p>For applications that are used for processing previously available data,
+structure and execution plan for <cite>main</cite> function is mostly linear. Example of
+such <cite>main</cite> is:</p>
+<pre class="code python literal-block"><code>def main():
+    read_input()
+    validate_data()
+    process_data()
+    generate_output()</code></pre>
+<p>In this example, actions are executed sequentially and are dependent on previous
+actions execution. For such actions, their lifetime is dependent on data they
+are processing. This means that lifetime of <cite>main</cite> function (and thus lifetime
+of application) is directly dependent of processed data. If this data is
+available previous to application execution or if it is limited in quantity,
+lifetime of application is also limited. Examples of this kind of applications
+are command line utilities such as <cite>tar</cite>, <cite>git</cite>, <cite>cp</cite>, etc.</p>
+<p>For applications that do not operate on previously available data or if
+quantity of processed data is directly determined by previously processed data,
+more complex and non-deterministic execution logic is required. Example of this
+kind of applications <cite>main</cite> can be written as:</p>
+<pre class="code python literal-block"><code>def main():
+    initialize()
+    while not done:
+        read_data()
+        validate_data()
+        process_data()
+        generate_output_part()
+    generate_output_end()</code></pre>
+<p>Application that depend on data that is not previously available, are also
+dependent on the structure and time when required data will be available.
+Because of this, applications execution lifetime is often less deterministic
+and can spawn indefinite execution time. Example of this kind of applications
+are different kind of server applications (<cite>apache</cite>, <cite>xorg</cite>, ...).</p>
+</section>
+<section id="asyncio-application-lifetime">
+<h2><cite>asyncio</cite> application lifetime</h2>
+<p>Architecture and organization of long-running &quot;server&quot; applications is complex
+problem for which multiple design patters exist. One of widely used is usage
+of event loop. By using event loop, application functionality is split into
+multiple loosely connected parts which execution is triggered by occurrence of
+specific event. During execution of specific application logic, multiple events
+can be queued as result of application logic or from external sources. These
+events can be used as triggers for execution of other parts of application
+logic. Usual implementations of event loop are closely related and therefore
+usable as basic structural organization for previous long-running example
+application.</p>
+<pre class="code python literal-block"><code>def main():
+    register_event_subscriptions()
+    queue_initial_events()
+    while not done:
+        wait_while_queue_empty()
+        deque_event()
+        process_event()
+    cleanup()</code></pre>
+<p><cite>asyncio</cite> is library distributed with CPython distribution that provides
+cross-platform implementation of event loop. Together with event loop
+implementation and appropriate non-blocking IO function implementations,
+this library provides possibility to organize application logic by usage of
+coroutines. Coroutines provide synchronization points which are used for
+temporary delegation of execution flow to event loop engine. By using this
+concept, application logic can be described in sequential manner while
+execution will be split into multiple concurrent parts. Example of usual
+structure for <cite>asyncio</cite> applications is:</p>
+<pre class="code python literal-block"><code>import asyncio
+import sys
+
+async def main():
+    ...
+
+if __name__ == '__main__':
+    sys.exit(asyncio.run(main()))</code></pre>
+<p>Lifetime of <cite>asyncio</cite> applications is therefore similar to other &quot;server&quot;
+and long-running application. Same problems, regarding controlling of
+application execution and lifetime, are associated with applications based
+on <cite>asyncio</cite>.</p>
+</section>
+<section id="signals">
+<h2>Signals</h2>
+<p>One of main requirement for processing data is usage of some kind input/output
+mechanism for obtaining input data and providing processing result. Usual means
+for communication between application and &quot;outside world&quot; are writing/reading
+of files, communication based on pipes or shared memory, communication based
+on sockets, etc. Usage of this kind of communication media provides application
+with possibility to actively communicate and synchronize with &quot;outside world&quot;.
+This communication is not only responsible for providing input data that
+should be processed but is also directly responsible for controlling of
+application's execution lifetime.</p>
+<p>Posix signals are asynchronous communication mechanism that is most commonly
+used for controlling of application execution. Main difference between signals
+and other previously mentioned communication methods is availability of signals
+without existence of additional explicit application logic for negotiating
+communication. This mechanism is provided by operating system and is enabled
+prior to delegation of execution control to application defined logic.</p>
+<p>Most of predefined signals have conventional semantics associated with them.
+For example, once application receives SIGINT or SIGTERM, it should finish
+execution of application logic and stop its running process. This behavior is
+even implemented as default one and assigned to each application by operating
+system kernel. Although this is the default behavior, application can
+override it by providing custom signal handling routines (even ignore request
+for application termination). Prior to execution of scripts code, Python
+interpreter overrides default behavior associated with these signals. New
+routines associated with these signals are responsible for raising
+<cite>KeyboardInterrupt</cite> exception from function that is currently being executed.
+This means that most of Python functions can raise this exception if
+application receives SIGINT or SIGTERM signal. By handling this exception,
+application can provide additional cleanup logic or ignore termination request
+according to its current state of execution.</p>
+<p>Together with signals which behavior can be overridden, some signals can not
+be overridden and are strongly enforced by operating system kernel. Example of
+such signal is SIGKILL which signals unconditional termination of application
+process. Stopping application by sending SIGKILL is therefor considered
+last resort for terminating application which is without sufficient reason
+ignoring signals SIGINT or SIGTERM.</p>
+<p>Most of programs communicate with other unknown programs through signals
+relaying on their proposed semantics. Example is command line shells which
+associate users Ctrl+C command with routines that send SIGINT to currently
+running program.</p>
+<p>If we analyze prior example of applications that are used for processing
+previously available data (applications with predefined lifetime), once user
+presses Ctrl+C, any of the currently running functions could stop execution,
+raise <cite>KeyboardInterrupt</cite> exception and propagate it to the <cite>main</cite>. In this
+case execution of <cite>main</cite> function is terminated and application process
+finishes. Due to sequential nature of data processing, this behavior is desired
+in majority of cases. Because of this, <cite>KeyboardInterrupt</cite> isn't event part
+of <cite>Exception</cite> children hierarchy so that it would not be caught by mistake
+during handling of other exceptions.</p>
+<p>For long-running applications, handling of SIGINT signal is often more complex
+and dependent of current execution state running application. This kind of
+applications rely on communication channels and protocols for communicating with
+&quot;outside world&quot;. This resources and protocols are usually statefull and should
+be properly released prior to application termination. Many of these
+applications can even postpone termination request if current processing of
+data is critical for well behaved system operation.</p>
+</section>
+<section id="asyncio-and-signals">
+<h2><cite>asyncio</cite> and signals</h2>
+<p>For determining behavior of <cite>asyncio</cite> application once it receives SIGINT,
+we will run test applications and look at console output when we press Ctrl+C:</p>
+<ul class="simple">
+<li><p>5 seconds after application is run</p></li>
+<li><p>15 seconds after application is run</p></li>
+</ul>
+<p>Code of test application (<cite>test.py</cite>) is:</p>
+<pre class="code python literal-block"><code>import asyncio
+import time
+
+async def main():
+    time.sleep(10)
+    await asyncio.sleep(10)
+
+if __name__ == '__main__':
+    asyncio.run(main())</code></pre>
+<p>When Ctrl+C is pressed 5 second after application is started, application
+exits with console output:</p>
+<pre class="literal-block">Traceback (most recent call last):
+  File &quot;test.py&quot;, line 11, in &lt;module&gt;
+    asyncio.run(main())
+  File &quot;/usr/lib/python3.7/asyncio/runners.py&quot;, line 43, in run
+    return loop.run_until_complete(main)
+  File &quot;/usr/lib/python3.7/asyncio/base_events.py&quot;, line 566, in run_until_complete
+    self.run_forever()
+  File &quot;/usr/lib/python3.7/asyncio/base_events.py&quot;, line 534, in run_forever
+    self._run_once()
+  File &quot;/usr/lib/python3.7/asyncio/base_events.py&quot;, line 1771, in _run_once
+    handle._run()
+  File &quot;/usr/lib/python3.7/asyncio/events.py&quot;, line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File &quot;test.py&quot;, line 6, in main
+    time.sleep(10)
+KeyboardInterrupt</pre>
+<p>From this call stack trace, we can notice that <cite>KeyboardInterrupt</cite> was raised
+from <cite>time.sleep</cite> function and was propagated to <cite>main</cite> coroutine which
+propagates exception to <cite>ayncio.run</cite> and stops program execution.</p>
+<p>If we run the same program and press Ctrl+C 15 seconds after application is
+started, application also exits but this time with following console
+output:</p>
+<pre class="literal-block">Traceback (most recent call last):
+  File &quot;test.py&quot;, line 11, in &lt;module&gt;
+    asyncio.run(main())
+  File &quot;/usr/lib/python3.7/asyncio/runners.py&quot;, line 43, in run
+    return loop.run_until_complete(main)
+  File &quot;/usr/lib/python3.7/asyncio/base_events.py&quot;, line 566, in run_until_complete
+    self.run_forever()
+  File &quot;/usr/lib/python3.7/asyncio/base_events.py&quot;, line 534, in run_forever
+    self._run_once()
+  File &quot;/usr/lib/python3.7/asyncio/base_events.py&quot;, line 1735, in _run_once
+    event_list = self._selector.select(timeout)
+  File &quot;/usr/lib/python3.7/selectors.py&quot;, line 468, in select
+    fd_event_list = self._selector.poll(timeout, max_ev)
+KeyboardInterrupt</pre>
+<p>From this call stack trace, we can observe that <cite>KeyboardInterrupt</cite> is raised
+from method which is part of internal <cite>asyncio</cite> implementation and is
+propagated directly to <cite>asyncio.run</cite> bypassing <cite>main</cite> coroutine.</p>
+<p>We can clearly demonstrate this behavior with little modification of above
+script:</p>
+<pre class="code python literal-block"><code>import asyncio
+import time
+
+async def main():
+    try:
+        time.sleep(10)
+    except KeyboardInterrupt:
+        print('&gt;&gt; time.sleep')
+        raise
+    try:
+        await asyncio.sleep(10)
+    except KeyboardInterrupt:
+        print('&gt;&gt; asyncio.sleep')
+        raise
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print('&gt;&gt; asyncio.run')</code></pre>
+<p>When we press Ctrl+C 5 seconds after startup, output is:</p>
+<pre class="literal-block">&gt;&gt; time.sleep
+&gt;&gt; asyncio.run</pre>
+<p>But when we press Ctrl+C 15 seconds after startup, we get:</p>
+<pre class="literal-block">&gt;&gt; asyncio.run</pre>
+<p>This example shows us that although coroutine code seems to be executed
+sequentially, on every synchronization point (in this case
+<cite>await asyncio.sleep(10)</cite>) application execution is transferred from coroutine
+to <cite>asyncio</cite> event loop. This observation is specially important when
+handling of signals is necessary, because application can receive lifetime
+controlling signals at any time.</p>
+</section>
+<section id="hat-aio-run-asyncio">
+<h2><cite>hat.aio.run_asyncio</cite></h2>
+<p><cite>hat-aio</cite> package provides function <cite>hat.aio.run_asyncio</cite> which can be used
+instead of <cite>asyncio.run</cite>. This function overrides default handlers associated
+with signals SIGINT and SIGTERM and replaces them with routine which cancels
+initially run task (task created based on execution of <cite>main</cite> coroutine).
+Once this method finishes, all signal handlers are restored to previous state.</p>
+<p>Cancellation of <cite>asyncio</cite> task is implemented as raising of
+<cite>asyncio.CancelledError</cite> exception at most nested currently waiting
+synchronization point.</p>
+<p>By suppressing <cite>KeyboardInterrupt</cite> and raising <cite>asyncio.CancelledError</cite>
+exceptions, we have better reasoning where and when this exception will occur.
+This allows us easier handling of termination requests and better organization
+and control of cleanup code execution.</p>
+<p>Because <cite>asyncio.CancelledError</cite> exceptions are raised only on synchronization
+points (where <cite>await</cite> is used), additional care must be used that coroutines
+do not use long lasting blocking code and thus support prompt reaction to
+received signals.</p>
+<p>Additionally, <cite>hat.aio.run_asyncio</cite> cancels running task only once, no matter
+how many signals are sent to application. This provides easier cleanup
+implementation because cleanup procedure won't be interrupter with another
+termination request.</p>
+<p>We can run test script by replacing <cite>asyncio.run</cite> with <cite>hat.aio.run_asyncio</cite>
+and <cite>KeyboardInterrupt</cite> with <cite>asyncio.CancelledError</cite>:</p>
+<pre class="code python literal-block"><code>import asyncio
+import time
+import hat.util
+
+async def main():
+    try:
+        time.sleep(10)
+    except asyncio.CancelledError:
+        print('&gt;&gt; time.sleep')
+        raise
+    try:
+        await asyncio.sleep(10)
+    except asyncio.CancelledError:
+        print('&gt;&gt; asyncio.sleep')
+        raise
+
+if __name__ == '__main__':
+    try:
+        hat.aio.run_asyncio(main())
+    except asyncio.CancelledError:
+        print('&gt;&gt; hat.aio.run_asyncio')</code></pre>
+<p>If we press Ctrl+C after 5 seconds, application will continue running for
+another 5 seconds and then terminate with console output:</p>
+<pre class="literal-block">&gt;&gt; asyncio.sleep
+&gt;&gt; hat.aio.run_asyncio</pre>
+<p>If we press Ctrl+C after 15 seconds, application will terminate instantly
+with console output:</p>
+<pre class="literal-block">&gt;&gt; asyncio.sleep
+&gt;&gt; hat.aio.run_asyncio</pre>
+</section>
+<section id="hat-aio-run-asyncio-vs-asyncio-run">
+<h2><cite>hat.aio.run_asyncio</cite> vs <cite>asyncio.run</cite></h2>
+<p>Although at first glace, <cite>hat.aio.run_asyncio</cite> looks exactly as <cite>asyncio.run</cite>
+with added signal handling, user of this function should be aware of few
+subtle differences.</p>
+<p>First obvious difference is additional optional parameter <cite>loop</cite> which can
+be provided to <cite>hat.aio.run_asyncio</cite>. This parameter can be set to loop
+instance which should be used as basis for provided coroutine execution.
+If this parameter is set to <span class="docutils literal">None</span>, <cite>hat.aio.run_asyncio</cite> will create
+new loop instance and register it as current thread's default loop
+(same behavior as in <cite>asyncio.run</cite>).</p>
+<p>Second important difference is associated with &quot;cleanup&quot; procedure. When
+execution of coroutine by <cite>asyncio.run</cite> is done, all active tasks, associated
+with loop instance, are canceled and loop is run until all cleanup
+actions are finished. Then loop is closed and <cite>asyncio.run</cite> finishes execution.
+In contrast, <cite>hat.aio.run_asyncio</cite> only cancels single task - one representing
+execution of provided coroutine. Once this task is done
+(because of available result or <cite>asyncio.CancelledError</cite> propagation),
+<cite>hat.aio.run_asyncio</cite> finishes execution without closing loop instance (if
+loop instance is not provided as argument, newly created loop is closed
+without canceling other running tasks).</p>
+<p>Reasons for different &quot;cleanup&quot; semantics of <cite>hat.aio.run_asyncio</cite> are:</p>
+<ul class="simple">
+<li><p>If instance of loop is explicitly provided as <cite>hat.aio.run_asyncio</cite>
+argument, then it should be kept open for possibility of it's re-usage
+(usage of single loop instance for multiple <cite>hat.aio.run_asyncio</cite> calls).</p></li>
+<li><p>By explicitly providing only single coroutine to <cite>hat.aio.run_asyncio</cite>,
+responsibility of <cite>hat.aio.run_asyncio</cite> is restricted only to
+execution/canceling of provided coroutine. All other tasks don't have
+to be corelated to provided coroutine and therefor should not be
+canceled by <cite>hat.aio.run_asyncio</cite>.</p></li>
+<li><p>It is responsibility of each task (executing coroutine) to manage
+lifetime of possibly newly spawned sub-tasks. Therefor, if &quot;main&quot;
+coroutine spawns new tasks, execution of this tasks should be
+taken into account during &quot;main&quot; coroutine cleanup (usually by
+canceling and/or awaiting their execution).</p></li>
+</ul>
+</section>
+<section id="signals-in-windows">
+<h2>Signals in Windows</h2>
+<p>Unfortunately, Windows doesn't have full support for Posix signals. Most of
+the signal handling procedures, as defined by C standard library, operate only
+inside scope of single process and can not be used for communication between
+processes.</p>
+<p>For Windows application process, request for process termination is usually
+done by calling <cite>TerminateProcess</cite> (<cite>kernel32.dll</cite> function). This request is
+unconditional and with its semantics it is closest to the usage of SIGKILL
+signal.</p>
+<p>For console applications, asynchronous request for process termination can be
+triggered by calling <cite>GenerateConsoleCtrlEvent</cite> (<cite>kernel32.dll</cite> function).
+Default behavior for all console applications is to stop application execution
+once either of this two events are received. This default behavior can be
+overridden by calling <cite>SetConsoleCtrlHandler</cite> and providing alternative
+event handlers. Alternative method for raising CTRL_C_EVENT is associated
+with user Ctrl+C key press when application is running in active command
+prompt. This behavior resembles behavior associated with Posix SIGINT and
+SIGTERM signals.</p>
+<p>Main difference between events raised with <cite>GenerateConsoleCtrlEvent</cite> and Posix
+signals is that raising of CTRL_C_EVENT and CTRL_BREAK_EVENT can only target
+process group instead of single process (or even thread in case of <cite>pthread</cite>
+implementation). This means that once we raise CTRL_C_EVENT or
+CTRL_BREAK_EVENT, all processes in target process group will receive and handle
+sent event. Further restriction is put on CTRL_C_EVENT which can only be raised
+from process which is part of the target process group. Because of this
+restriction, every process raising CTRL_C_EVENT must also handle event that
+itself raised.</p>
+</section>
+<section id="controlling-python-applications-lifetime-on-windows">
+<h2>Controlling Python applications lifetime on Windows</h2>
+<p>Python tries to provide uniform API for different platforms. Because of this,
+external control of application lifetime for Python applications running on
+Windows is possible with same interface used for sending and handling of
+Posix signals. But because of previously mentioned restrictions, additional
+care should be used.</p>
+<p>Most significant restrictions and rules for using Python signal mapping to
+Windows events:</p>
+<ul class="simple">
+<li><p>Children processes which are to be controlled by events should be
+created with <cite>subprocess.Popen</cite> 's <cite>CREATE_NEW_PROCESS_GROUP</cite> flag.
+Creation of new group is mandatory if calling process doesn't
+want to handle sent event.</p></li>
+<li><p><cite>os.kill</cite> and <cite>subprocess.Process.send_signal</cite> doesn't receive process
+identification. Instead, process group identification is expected. Process
+group identification is the same as process identification for which new
+group was created. Process group identification <cite>0</cite> identifies process
+group to which current process belongs.</p></li>
+<li><p>Raising of SIGKILL is implemented as calling <cite>subprocess.Popen.terminate</cite>
+which calls <cite>TerminateProcess</cite>.</p></li>
+<li><p><cite>os.kill</cite> and <cite>subprocess.Process.send_signal</cite> support only
+SIGKILL, CTRL_C_EVENT and CTRL_BREAK_EVENT.</p></li>
+<li><p>When writing signal handlers in Python, CTRL_C_EVENT is notified as
+SIGINT signal and CTRL_BREAK_EVENT is notified as SIGBREAK signal.</p></li>
+<li><p>CTRL_C_EVENT and CTRL_BREAK_EVENT are dispatched to all processes in
+process group.</p></li>
+<li><p>Only CTRL_BREAK_EVENT can be raised from one process group targeting
+other process group.</p></li>
+</ul>
+</section>
+<section id="hat-aio-run-asyncio-on-windows">
+<h2><cite>hat.aio.run_asyncio</cite> on Windows</h2>
+<p>Implementation of <cite>run_asyncio</cite> takes into account previously mentioned
+restrictions. This means that signals for which default behavior is temporary
+overridden include SIGBREAK.</p>
+<p>Depending on used implementation of <cite>asyncio</cite> event loop, there exist
+possibility that signal handlers will not be triggered while event loop is in
+state of waiting for IO associated events. This problem is currently addressed
+by providing periodical &quot;wakeup&quot; of event loop every 0.5 seconds. This period
+is responsible for latency between raising events and notification of their
+occurrence which can last up to 0.5 second.</p>
+<p>Because of these addition logic implemented inside <cite>run_asyncio</cite>, same code
+provided as example of running <cite>asyncio</cite> application with
+<cite>hat.aio.run_asyncio</cite> can be run on Windows with same behavior as on other
+systems.</p>
+</section>
+</main>
+
+</content>
+</entry>
+</feed>

@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="autor" content="Bozo Kopic" />
+    <meta name="description" content="Bozo Kopic homepage" />
+    <title>asyncio resource management</title>
+    <link href="../index.xml" type="application/atom+xml" rel="alternate" />
+    <link href="../main.css" rel="stylesheet" />
+    
+    <link href="../article.css" rel="stylesheet">
+
+</head>
+<body>
+    <header>
+        <h1>Bozo Kopic - Articles</h1>
+        <nav>
+            <span>[ <a href="../index.html">About</a> ]</span>
+            <span>[ <a href="../projects.html">Projects</a> ]</span>
+            <span>[ <a href="../articles.html">Articles</a> ]</span>
+            <span>[ <a href="../index.xml">Feed</a> ]</span>
+        </nav>
+    </header>
+    <main>
+        
+
+
+
+
+<article>
+
+<div class="info">
+    <label>Published:</label>
+    <div>2024-08-31 18:56:00 UTC</div>
+</div>
+
+<main id="asyncio-resource-management">
+<h1 class="title"><cite>asyncio</cite> resource management</h1>
+<p>This article analyzes resource management in applications based on Python's
+<a class="reference external" href="https://docs.python.org/3/library/asyncio.html">asyncio</a> library. As introduction, generic concept and significance of
+resource management is explained. Concepts discussed in this section
+are applicable to wide variety of implementations and are not specific to
+<cite>asyncio</cite> or Python. Later, focus is shifted towards Python implementation and
+<cite>asyncio</cite> library by explaining potential problems in usage of this library.
+As a solution to noted problems, second part of this article presents
+<a class="reference external" href="https://hat-aio.hat-open.com">hat-aio</a> utility library.</p>
+<aside class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This article assumes familiarity with <a class="reference external" href="https://docs.python.org/3/library/asyncio.html">asyncio</a> library and concepts
+such as <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#task-cancellation">task cancellation</a> and distinction between
+<a class="reference external" href="https://docs.python.org/3/library/asyncio-future.html#future-object">asyncio.Future</a>, <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#asyncio.Task">asyncio.Task</a>, coroutine function and coroutine object.</p>
+</aside>
+<section id="procedural-based-architecture">
+<h2>Procedural based architecture</h2>
+<p>In procedural programming languages, functions are used as primary way to
+organize code. Function implementation itself is defined as composition of other
+function calls. This enables creation of higher levels of abstraction based on
+previously defined functions and serves as efficient model for solving even the
+most complex tasks. To enable this kind of composition, crucial part of
+each function is its interface.</p>
+<p>Function interface is usually defined by its arguments and return value. By
+explicitly stating on which arguments function operates and what result function
+produces, function provides basic method of encapsulation. Thus, function
+implementation itself is regarded as &quot;implementation detail&quot; -
+something that should not be primary concern for user of function. As long
+as interface is obeyed, user can utilize function in any way necessary and
+expect correct results.</p>
+<p>In practice, function interface alone is not sufficient to recognize all
+possible side effects of function execution. Together with shared state and
+thread-local storage, even function arguments can hide not so obvious
+encapsulation braking properties. In contrast to self-contained &quot;plain data&quot;,
+arguments can represent identifiers/references to stateful resources (e.g.
+allocated memory, open file handles, sockets, ...). By accepting/returning
+resource as part of its interface, function becomes part of resource management.
+This imposes additional rules that are, in most languages, available only as
+part of additional API documentation. Thus responsibility is shifted towards
+function user which has to take into account resource lifetime and ownership
+rules. Any kind of resource, that crosses single function boundary, has
+potential to cause &quot;resource leakage&quot;.</p>
+<p>When function accepts resource as argument or returns resource as result,
+care should be taken to inform function user of all side effects that function
+has on resource state. In cases when function utilizes resource as
+part of its implementation, without exposing it in function interface, it is
+responsibility of function itself to properly create/manipulate/free resource
+thus preventing &quot;resource leaks&quot;.</p>
+<p>All these constraints, that apply to classical procedural architectures,
+also apply to other architectures that are built upon procedural
+code organization. One example of these derived architectures is coroutine
+based architecture.</p>
+</section>
+<section id="coroutine-based-architecture">
+<h2>Coroutine based architecture</h2>
+<p>Coroutines in modern programming languages (e.g. Python) are used as tool for
+modeling concurrent algorithms. Ease of usage and their usability comes from
+close mimicking of regular functions. Even though execution of statements inside
+coroutine can be suspended/resumed, sequential execution and interface
+definition is closely based on regular function model. Thus, most programmers
+(that are usually well acquainted with procedural programming style) expect
+similar behavior, in regard of resource management, as they expect from
+regular functions.</p>
+<p>Similarities between coroutines and functions can sometimes be deceptive.
+By introduction of additional control flow rules, care must be taken to
+expect different execution side-effects than in syntactically similar regular
+functions. In case of Python, each <cite>await</cite> is potential place of suspending
+execution, resuming execution, cancelling of current task or even permanent
+stopping of task execution. Therefore, resource management must take into
+account not strictly linear execution of coroutine statements.</p>
+<p>To prevent &quot;resource leaks&quot;, each &quot;await&quot; expression should expect possible
+task cancellation and safely end resource usage. Python implements task
+cancellation utilizing exception raising (<cite>CancelledError</cite>). Because of this,
+<cite>try/except/finally</cite> blocks are often necessary part of resource
+management which itself introduces additional nonlinear execution.</p>
+<p>In Python <cite>asyncio</cite> library, concurrent execution threads, responsible for
+execution of coroutine implementations, are represented with <cite>tasks</cite>. These
+<cite>tasks</cite> are also resources and should be managed as any other resources.
+Similarly to OS threads which should be &quot;joined&quot;, execution lifetime of
+<cite>tasks</cite> (including starting and stopping) should be monitored. Therefor,
+each coroutine, spawning new task that are encapsulated as internal resources
+(ones not crossing coroutine execution boundaries), should include cleanup
+sequence ensuring that all newly spawned internal tasks have completed their
+execution. For all tasks that are directly or indirectly part of coroutine
+interface (input arguments or return values), ownership rules should be
+clearly documented.</p>
+</section>
+<section id="uninterrupted-task-execution">
+<h2>Uninterrupted task execution</h2>
+<p>Because coroutines introduce additional execution exit points, it can be
+challenging to implement functionality that requires uninterrupted execution.
+One of examples, where uninterrupted execution is required, is
+resource cleanup procedures. When resource requires additional IO operations
+and/or include execution time delays, resource cleanup procedures
+are implemented as coroutines. To guarantee correct resource release, this
+cleanup coroutine should usually have uninterrupted execution.</p>
+<p>To analyze possible problems of resource usage and uninterrupted execution,
+we can start with generic resource example:</p>
+<pre class="code python literal-block"><code><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">do_work</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="name">resource</span> <span class="operator">=</span> <span class="keyword">await</span> <span class="name">create_resource</span><span class="punctuation">()</span><span class="whitespace">
+</span>    <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="operator">...</span>  <span class="comment single"># utilize resource to do some work</span><span class="whitespace">
+</span>    <span class="keyword">finally</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="keyword">await</span> <span class="name">cleanup_resource</span><span class="punctuation">(</span><span class="name">resource</span><span class="punctuation">)</span><span class="whitespace">
+
+</span><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">create_resource</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="operator">...</span>  <span class="comment single"># create and return resource</span><span class="whitespace">
+
+</span><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">cleanup_resource</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="operator">...</span>  <span class="comment single"># cleanup resource</span></code></pre>
+<p>In this simple example, resource usage is encapsulated as part of <cite>do_work</cite>
+coroutine. Because resource is not part of <cite>do_work</cite>'s interface (directly or
+indirectly), it is expected that <cite>do_work</cite> will correctly release resource
+before its execution is done. This is the reason why <cite>cleanup_resource</cite> is
+called as part of <cite>finally</cite> block.</p>
+<p>If coroutine's <cite>create_resource</cite> and <cite>cleanup_resource</cite> are correctly
+implemented (in regard of encapsulation/cleanup expectations), and if task
+associated with <cite>do_work</cite> execution is not cancelled, this example correctly
+models generic resource usage. But, if task executing <cite>do_work</cite> is cancelled,
+this example can result in &quot;resource leaks&quot;.</p>
+<p>For example, we can expect cases where <cite>do_work</cite> is constrained with execution
+time. If this execution time is exceeded, <cite>do_work</cite> should be canceled:</p>
+<pre class="code python literal-block"><code><span class="name">do_work_task</span> <span class="operator">=</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">create_task</span><span class="punctuation">(</span><span class="name">do_work</span><span class="punctuation">())</span><span class="whitespace">
+</span><span class="keyword">await</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">wait_for</span><span class="punctuation">(</span><span class="name">do_work_task</span><span class="punctuation">,</span> <span class="name">timeout</span><span class="punctuation">)</span></code></pre>
+<p>With introduction of task cancellation, it is not clear if <cite>do_work</cite> will
+correctly cleanup resource. Because task cancellation is mapped to raising
+of <cite>CancelledError</cite>, if task is cancelled during execution of <cite>try</cite> block,
+<cite>finally</cite> block will be executed thus releasing resource. But, if
+<cite>CancelledError</cite> is raised during execution of <cite>finally</cite> block (e.g. <cite>try</cite>
+block execution is finished), cleanup procedure could be interrupted while
+resource is still not released. Because <cite>asyncio</cite> enables multiple cancellations
+of same task, <cite>CancelledError</cite> can even be expected while <cite>finally</cite> block
+is running as consequence of previous <cite>CancelledError</cite>.</p>
+<p>To shield task from cancellation, <cite>asyncio</cite> implements <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#asyncio.shield">asyncio.shield</a>.
+By using <cite>asyncio.shield</cite> while calling <cite>cleanup_resource</cite>, we can rewrite
+<cite>do_work</cite>:</p>
+<pre class="code python literal-block"><code><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">do_work</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="name">resource</span> <span class="operator">=</span> <span class="keyword">await</span> <span class="name">create_resource</span><span class="punctuation">()</span><span class="whitespace">
+</span>    <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="operator">...</span>  <span class="comment single"># utilize resource to do some work</span><span class="whitespace">
+</span>    <span class="keyword">finally</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="keyword">await</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">shield</span><span class="punctuation">(</span><span class="name">cleanup_resource</span><span class="punctuation">(</span><span class="name">resource</span><span class="punctuation">))</span></code></pre>
+<aside class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Because of additional complexity, this example simplifies correct
+usage of <cite>asyncio.shield</cite> which mandates keeping of task reference,
+thus preventing task garbage collection. In case of cancelling task
+while awaiting <cite>asyncio.shield</cite>, if reference to shielded task is not kept,
+its execution can be interrupted.</p>
+</aside>
+<p>Now, once <cite>cleanup_resource</cite> is called, it will not be interrupted. But, even
+though <cite>cleanup_resource</cite> is shielded, task executing <cite>do_work</cite> is not
+shielded. <cite>await asyncio.shield</cite> is not different from any other
+<cite>await</cite> and will result in raising of <cite>CancelledError</cite> if task is canceled.
+This behavior doesn't align with assumption of internal resource encapsulation
+because <cite>do_work</cite> can finish execution before resource is released.</p>
+<p>In order to handle this problem, library <cite>hat-aio</cite> implements
+<a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#uncancellable">hat.aio.uncancellable</a>. This coroutine can be used
+as means of temporary suppressing/delaying cancellation, while shielded
+coroutine is executing.</p>
+<p>By replacing <cite>asyncio.shield</cite> with <cite>hat.aio.uncancellable</cite>, <cite>do_work</cite>
+can guarantee that internal resource is released when <cite>do_work</cite> itself finishes
+execution:</p>
+<pre class="code python literal-block"><code><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">do_work</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="name">resource</span> <span class="operator">=</span> <span class="keyword">await</span> <span class="name">create_resource</span><span class="punctuation">()</span><span class="whitespace">
+</span>    <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="operator">...</span>  <span class="comment single"># utilize resource to do some work</span><span class="whitespace">
+</span>    <span class="keyword">finally</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="keyword">await</span> <span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">uncancellable</span><span class="punctuation">(</span><span class="name">cleanup_resource</span><span class="punctuation">(</span><span class="name">resource</span><span class="punctuation">))</span></code></pre>
+<p>This implementation will stop propagation of <cite>CancelledError</cite> to
+<cite>cleanup_resource</cite> and enable uninterrupted execution of <cite>do_work</cite> while
+cleanup procedure is running.</p>
+<p>When <cite>hat.aio.uncancellable</cite> is used, following constraints should be taken
+into account:</p>
+<ul class="simple">
+<li><p><cite>hat.aio.uncancellable</cite> spawn new task (same as <cite>asyncio.shield</cite>), thus
+introducing additional overhead</p></li>
+<li><p>re-raising of <cite>CancelledError</cite> is prioritized over shielded task's
+result/exception (future versions of <cite>hat-aio</cite> could utilize
+<a class="reference external" href="https://docs.python.org/3/library/exceptions.html#lib-exception-groups">exception groups</a> to prevent suppression of task exceptions in case of
+<cite>CancelledError</cite>)</p></li>
+</ul>
+<aside class="admonition note">
+<p class="admonition-title">Note</p>
+<p>In majority of cases, <cite>hat.aio.uncancellable</cite> should be called with default
+<span class="docutils literal">raise_cancel=True</span> which, instead of discarding <cite>CancelledError</cite>, delays
+raising of possible <cite>CancelledError</cite> after shielded task finishes execution.</p>
+</aside>
+</section>
+<section id="spawning-tasks">
+<h2>Spawning tasks</h2>
+<p>Python <cite>asyncio</cite> library represents concurrent execution threads with
+<cite>asyncio.Task</cite> abstraction (this should not be confused with operating system
+level threads which enable parallelism). Managing this kind of resources
+should be done with additional care, taking into account task's lifetime
+and possibility of cancellation. <cite>asyncio</cite> library doesn't provide enough
+mechanisms regarding management of multiple tasks and their lifetime.</p>
+<aside class="admonition note">
+<p class="admonition-title">Note</p>
+<p>CPython 3.11 introduced <a class="reference external" href="https://docs.python.org/3/library/asyncio-task.html#task-groups">task groups</a> which support managing lifetime
+of multiple tasks. Although simple grouping of tasks is supported,
+guaranties regarding task cancellation or waiting for resource cleanup
+are not available.</p>
+</aside>
+<p>To simplify referencing multiple tasks and control their lifetime, <cite>hat-aio</cite>
+implements <a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#Group">hat.aio.Group</a>. By spawning tasks via <cite>hat.aio.Group</cite>,
+tasks' lifetime is managed by group's lifetime. Together with control of
+directly spawned tasks, each group can control lifetime of other groups
+(referred to as subgroups or child groups).</p>
+<p>Each instance of <cite>hat.aio.Group</cite> transitions between 3 distinctive states:
+<span class="docutils literal">OPEN</span>, <span class="docutils literal">CLOSING</span> and <span class="docutils literal">CLOSED</span>. To check for current state and
+initiate/wait for state transition, following interface is exposed:</p>
+<pre class="code python literal-block"><code><span class="name decorator">&#64;property</span><span class="whitespace">
+</span><span class="keyword">def</span> <span class="name function">is_open</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="name builtin">bool</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="operator">...</span><span class="whitespace">
+
+</span><span class="name decorator">&#64;property</span><span class="whitespace">
+</span><span class="keyword">def</span> <span class="name function">is_closing</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="name builtin">bool</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="operator">...</span><span class="whitespace">
+
+</span><span class="name decorator">&#64;property</span><span class="whitespace">
+</span><span class="keyword">def</span> <span class="name function">is_closed</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="name builtin">bool</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="operator">...</span><span class="whitespace">
+
+</span><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">wait_closing</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>    <span class="operator">...</span><span class="whitespace">
+
+</span><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">wait_closed</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>    <span class="operator">...</span><span class="whitespace">
+
+</span><span class="keyword">def</span> <span class="name function">close</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>    <span class="operator">...</span><span class="whitespace">
+
+</span><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">async_close</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>    <span class="operator">...</span></code></pre>
+<p>When new instance of group is created, it is initially set to <span class="docutils literal">OPEN</span> state.
+Once <cite>close</cite> method is called, group transitions to <span class="docutils literal">CLOSING</span> state.
+This state remains active until all associated tasks have finished their
+execution and all associated subgroups have transition to <span class="docutils literal">CLOSED</span> state.
+Only when all other managed resources (tasks and subgroups) have been
+released, instance of group will transition to <span class="docutils literal">CLOSED</span> state. For each group
+instance, this state transition (<span class="docutils literal">OPEN</span> -&gt; <span class="docutils literal">CLOSING</span> -&gt; <span class="docutils literal">CLOSED</span>) is
+irreversible. Only first call to <cite>close</cite> method initiates closing of group,
+while subsequent call have no effect. Additional <cite>async_close</cite> method
+is helper coroutine which calls <cite>close</cite> method and waits for <cite>wait_closed</cite>
+coroutine to finish.</p>
+<p>To create new tasks or subgroups, <cite>hat.aio.Group</cite> implements following
+interface:</p>
+<pre class="code python literal-block"><code><span class="keyword">def</span> <span class="name function">create_subgroup</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">,</span> <span class="name">log_exceptions</span><span class="punctuation">:</span> <span class="name builtin">bool</span> <span class="operator">|</span> <span class="keyword constant">None</span> <span class="operator">=</span> <span class="keyword constant">None</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="name">Group</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="operator">...</span><span class="whitespace">
+
+</span><span class="keyword">def</span> <span class="name function">wrap</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">,</span> <span class="name">obj</span><span class="punctuation">:</span> <span class="name">Awaitable</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">Task</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="operator">...</span><span class="whitespace">
+
+</span><span class="keyword">def</span> <span class="name function">spawn</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">,</span> <span class="name">fn</span><span class="punctuation">:</span> <span class="name">Callable</span><span class="punctuation">[</span><span class="operator">...</span><span class="punctuation">,</span> <span class="name">Awaitable</span><span class="punctuation">],</span> <span class="operator">*</span><span class="name">args</span><span class="punctuation">,</span> <span class="operator">**</span><span class="name">kwargs</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">Task</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="operator">...</span></code></pre>
+<p>Methods <cite>spawn</cite> and <cite>wrap</cite> create new tasks, associated with group, only
+if group is in <span class="docutils literal">OPEN</span> state. If group is in <span class="docutils literal">CLOSING</span> or <span class="docutils literal">CLOSED</span> state,
+this methods, including <cite>create_subgroup</cite> method, will raise exception.
+If new task is created by referencing coroutine, <cite>spawn</cite> method is preferred
+to <cite>wrap</cite> method (spawn method will not create coroutine object instance
+if group is not in <span class="docutils literal">OPEN</span> state).</p>
+<p>When group's <cite>close</cite> method is called, all associated tasks, that have not
+finished their execution, are canceled and all associated subgroups are
+closed. Because methods <cite>spawn</cite> and <cite>wrap</cite> return shielded tasks, closing
+of group is only external method of requesting task cancellation (under
+assumption that reference to task is not obtained by <cite>asyncio</cite> utility methods
+such as <cite>asyncio.current_task</cite>).</p>
+<p>Implementation of <cite>hat.aio.Group</cite> provides following guarantees:</p>
+<ul class="simple">
+<li><p>only open group can spawn new tasks or create new subgroups</p></li>
+<li><p>closing of group will cancel all running tasks and closes all running
+subgroups</p></li>
+<li><p>tasks created by <cite>spawn</cite>/<cite>wrap</cite> will be cancelled at most once</p></li>
+<li><p>once group is closed, all associated tasks are <cite>done</cite> and all associated
+subgroups are closed</p></li>
+<li><p>during closing of group, cancelling running tasks is scheduled for execution
+in event loop thus giving opportunity to all previously created tasks to
+start executing their associated code</p></li>
+</ul>
+<p>To provide described behavior, group depends on following assumptions:</p>
+<ul class="simple">
+<li><p>tasks spawned by group should never suppress propagation of <cite>CancelledError</cite>
+(propagation can be temporary delayed with execution of cleanup procedures or
+means such as <cite>hat.aio.uncancellable</cite>, but each task, once cancelled, must
+finish its execution in near future).</p></li>
+<li><p>tasks spawned by group should be referenced only by returned value of
+<cite>spawn</cite>/<cite>wrap</cite> (shielded task)</p></li>
+</ul>
+</section>
+<section id="resource-lifetime">
+<h2>Resource lifetime</h2>
+<p>Usually, during its lifetime, resource transitions following major states:</p>
+<pre class="literal-block">CREATING/OPENING -&gt; CREATED/OPENED -&gt; DESTROYING/CLOSING -&gt; DESTROYED/CLOSED</pre>
+<p>where some of the resources do not have need for transitional states
+<cite>CREATING/OPENING</cite> and/or <cite>DESTROYING/CLOSING</cite>.</p>
+<p>If we assume that transition between this states is irreversible, lifetime of
+created resource can be modeled with lifetime of associated group. By pairing
+single resource instance with single group instance, current group state can
+represent current associated resource state.</p>
+<p><cite>hat-aio</cite> library provides <a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#Resource">hat.aio.Resource</a> abstract base class that can be
+used for associating resource with group:</p>
+<pre class="code python literal-block"><code><span class="keyword">class</span> <span class="name class">Resource</span><span class="punctuation">(</span><span class="name">abc</span><span class="operator">.</span><span class="name">ABC</span><span class="punctuation">):</span><span class="whitespace">
+
+</span>    <span class="keyword">async</span> <span class="keyword">def</span> <span class="name function magic">__aenter__</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>        <span class="keyword">return</span> <span class="name builtin pseudo">self</span><span class="whitespace">
+
+</span>    <span class="keyword">async</span> <span class="keyword">def</span> <span class="name function magic">__aexit__</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">,</span> <span class="operator">*</span><span class="name">args</span><span class="punctuation">):</span><span class="whitespace">
+</span>        <span class="keyword">await</span> <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">async_close</span><span class="punctuation">()</span><span class="whitespace">
+
+</span>    <span class="name decorator">&#64;property</span><span class="whitespace">
+</span>    <span class="name decorator">&#64;abc</span><span class="operator">.</span><span class="name">abstractmethod</span><span class="whitespace">
+</span>    <span class="keyword">def</span> <span class="name function">async_group</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="literal string single">'Group'</span><span class="punctuation">:</span><span class="whitespace">
+        </span><span class="literal string doc">&quot;&quot;&quot;Group controlling resource's lifetime.&quot;&quot;&quot;</span><span class="whitespace">
+
+</span>    <span class="name decorator">&#64;property</span><span class="whitespace">
+</span>    <span class="keyword">def</span> <span class="name function">is_open</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="name builtin">bool</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="keyword">return</span> <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">async_group</span><span class="operator">.</span><span class="name">is_open</span><span class="whitespace">
+
+</span>    <span class="name decorator">&#64;property</span><span class="whitespace">
+</span>    <span class="keyword">def</span> <span class="name function">is_closing</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="name builtin">bool</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="keyword">return</span> <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">async_group</span><span class="operator">.</span><span class="name">is_closing</span><span class="whitespace">
+
+</span>    <span class="name decorator">&#64;property</span><span class="whitespace">
+</span>    <span class="keyword">def</span> <span class="name function">is_closed</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="name builtin">bool</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="keyword">return</span> <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">async_group</span><span class="operator">.</span><span class="name">is_closed</span><span class="whitespace">
+
+</span>    <span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">wait_closing</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>        <span class="keyword">await</span> <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">async_group</span><span class="operator">.</span><span class="name">wait_closing</span><span class="punctuation">()</span><span class="whitespace">
+
+</span>    <span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">wait_closed</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>        <span class="keyword">await</span> <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">async_group</span><span class="operator">.</span><span class="name">wait_closed</span><span class="punctuation">()</span><span class="whitespace">
+
+</span>    <span class="keyword">def</span> <span class="name function">close</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>        <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">async_group</span><span class="operator">.</span><span class="name">close</span><span class="punctuation">()</span><span class="whitespace">
+
+</span>    <span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">async_close</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>        <span class="keyword">await</span> <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">async_group</span><span class="operator">.</span><span class="name">async_close</span><span class="punctuation">()</span></code></pre>
+<p>When using this class, resource should be modeled with class inheriting
+<cite>hat.aio.Resource</cite> and defining unimplemented <cite>async_group</cite> property.
+Instance of group returned by this property will be used as associated group
+which state is mirrored to resource's state.</p>
+</section>
+<section id="examples-of-resource-modeling">
+<h2>Examples of resource modeling</h2>
+<p>As additional help with <cite>hat.aio.Resource</cite> usage, <cite>hat-aio</cite> implements utility
+functions:</p>
+<ul>
+<li><p><a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#call_on_cancel">hat.aio.call_on_cancel</a></p>
+<p>Coroutine which pauses execution of associated task until task is canceled.
+Once task is canceled, function or coroutine passed to
+<cite>hat.aio.call_on_cancel</cite> as argument will be executed.</p>
+</li>
+<li><p><a class="reference external" href="https://hat-aio.hat-open.com/py_api/hat/aio.html#call_on_done">hat.aio.call_on_done</a></p>
+<p>Coroutine which pauses execution of associated task until provided awaitable
+is done. Once awaitable is done, function or coroutine passed to
+<cite>hat.aio.call_on_done</cite> as argument will be executed.</p>
+</li>
+</ul>
+<p>Together with these utility function, <cite>hat.aio.Resource</cite> can be used to model
+wide range of idioms, such as:</p>
+<ol class="arabic">
+<li><p>User defined resource with new group instance</p>
+<blockquote>
+<pre class="code python literal-block"><code><span class="keyword">class</span> <span class="name class">UserResource</span><span class="punctuation">(</span><span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">Resource</span><span class="punctuation">):</span><span class="whitespace">
+
+</span>    <span class="name decorator">&#64;staticmethod</span><span class="whitespace">
+</span>    <span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">create</span><span class="punctuation">()</span> <span class="operator">-&gt;</span> <span class="literal string single">'UserResource'</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name">resource</span> <span class="operator">=</span> <span class="name">UserResource</span><span class="punctuation">()</span><span class="whitespace">
+</span>        <span class="name">resource</span><span class="operator">.</span><span class="name">_async_group</span> <span class="operator">=</span> <span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">Group</span><span class="punctuation">()</span><span class="whitespace">
+
+</span>        <span class="operator">...</span>  <span class="comment single"># initialize/create resource</span><span class="whitespace">
+
+</span>        <span class="keyword">return</span> <span class="name">resource</span><span class="whitespace">
+
+</span>    <span class="name decorator">&#64;property</span><span class="whitespace">
+</span>    <span class="keyword">def</span> <span class="name function">async_group</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>        <span class="keyword">return</span> <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">_async_group</span></code></pre>
+</blockquote>
+<p>In this simple example, resource is associated with newly created group.
+Because <cite>UserResource</cite> inherits <cite>hat.aio.Resource</cite>, all of the lifetime
+associated methods/properties from <cite>hat.aio.Group</cite> are also available
+in <cite>UserResource</cite>. Beside inherited methods/properties, <cite>UserResource</cite>
+can implement its own custom functionality and utilize associated group
+to spawn tasks controlled by resources lifetime.</p>
+</li>
+<li><p>Resource wrapping other resource</p>
+<blockquote>
+<pre class="code python literal-block"><code><span class="keyword">class</span> <span class="name class">UserResource</span><span class="punctuation">(</span><span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">Resource</span><span class="punctuation">):</span><span class="whitespace">
+
+</span>    <span class="name decorator">&#64;staticmethod</span><span class="whitespace">
+</span>    <span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">create</span><span class="punctuation">(</span><span class="name">other_resource</span><span class="punctuation">:</span> <span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">Resource</span><span class="punctuation">)</span> <span class="operator">-&gt;</span> <span class="literal string single">'UserResource'</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name">resource</span> <span class="operator">=</span> <span class="name">UserResource</span><span class="punctuation">()</span><span class="whitespace">
+</span>        <span class="name">resource</span><span class="operator">.</span><span class="name">_other_resource</span> <span class="operator">=</span> <span class="name">other_resource</span><span class="whitespace">
+
+</span>        <span class="operator">...</span>  <span class="comment single"># initialize/create resource</span><span class="whitespace">
+
+</span>        <span class="keyword">return</span> <span class="name">resource</span><span class="whitespace">
+
+</span>    <span class="name decorator">&#64;property</span><span class="whitespace">
+</span>    <span class="keyword">def</span> <span class="name function">async_group</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>        <span class="keyword">return</span> <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">_other_resource</span><span class="operator">.</span><span class="name">async_group</span></code></pre>
+</blockquote>
+<p>Resources can be bound to groups that are not created during resource
+initialization. Usage of this functionality can be seen when resource
+wraps other resource and associate its lifetime with same group that
+is used for modeling other resource's state. Example of this behavior
+is common in modeling multi layered protocols, where higher level
+of abstraction is directly impacted with lifetime of lower level of
+abstraction.</p>
+</li>
+<li><p>Calling cleanup procedures</p>
+<blockquote>
+<pre class="code python literal-block"><code><span class="keyword">class</span> <span class="name class">UserResource</span><span class="punctuation">(</span><span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">Resource</span><span class="punctuation">):</span><span class="whitespace">
+
+</span>    <span class="name decorator">&#64;staticmethod</span><span class="whitespace">
+</span>    <span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">create</span><span class="punctuation">()</span> <span class="operator">-&gt;</span> <span class="literal string single">'UserResource'</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name">resource</span> <span class="operator">=</span> <span class="name">UserResource</span><span class="punctuation">()</span><span class="whitespace">
+</span>        <span class="name">resource</span><span class="operator">.</span><span class="name">_async_group</span> <span class="operator">=</span> <span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">Group</span><span class="punctuation">()</span><span class="whitespace">
+
+</span>        <span class="operator">...</span>  <span class="comment single"># initialize/create resource</span><span class="whitespace">
+
+</span>        <span class="name">resource</span><span class="operator">.</span><span class="name">async_group</span><span class="operator">.</span><span class="name">spawn</span><span class="punctuation">(</span><span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">call_on_cancel</span><span class="punctuation">,</span> <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">_cleanup</span><span class="punctuation">)</span><span class="whitespace">
+
+</span>        <span class="keyword">return</span> <span class="name">resource</span><span class="whitespace">
+
+</span>    <span class="name decorator">&#64;property</span><span class="whitespace">
+</span>    <span class="keyword">def</span> <span class="name function">async_group</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>        <span class="keyword">return</span> <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">_async_group</span><span class="whitespace">
+
+</span>    <span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">_cleanup</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>        <span class="operator">...</span>  <span class="comment single"># cleanup</span></code></pre>
+</blockquote>
+<p>By spawning <cite>hat.aio.call_on_cancel</cite> as new task, execution of cleanup code
+can be delayed to resource closing. Because this code is run during
+group's <span class="docutils literal">CLOSING</span> state, cleanup code should preform only necessary
+operations and finish execution in short time.</p>
+<blockquote>
+<aside class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Under assumption that execution of cleanup code will terminate,
+suppression of <cite>CancelledError</cite> in this case will not have negative
+impact on group's behavior (<cite>call_on_cancel</cite>/<cite>_cleanup</cite> are called
+as topmost coroutines for new task so propagation of <cite>CancelledError</cite>
+in this case is not mandatory).</p>
+</aside>
+</blockquote>
+</li>
+<li><p>Binding lifetime of one resource to other without sharing group</p>
+<blockquote>
+<pre class="code python literal-block"><code><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">create_resource</span><span class="punctuation">()</span> <span class="operator">-&gt;</span> <span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">Resource</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="operator">...</span>  <span class="comment single"># create resource</span><span class="whitespace">
+
+</span><span class="name">resource1</span> <span class="operator">=</span> <span class="keyword">await</span> <span class="name">create_resource</span><span class="punctuation">()</span><span class="whitespace">
+</span><span class="name">resource2</span> <span class="operator">=</span> <span class="keyword">await</span> <span class="name">create_resource</span><span class="punctuation">()</span><span class="whitespace">
+
+</span><span class="name">resource1</span><span class="operator">.</span><span class="name">async_group</span><span class="operator">.</span><span class="name">spawn</span><span class="punctuation">(</span><span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">call_on_cancel</span><span class="punctuation">,</span> <span class="name">resource2</span><span class="operator">.</span><span class="name">async_close</span><span class="punctuation">)</span><span class="whitespace">
+</span><span class="name">resource1</span><span class="operator">.</span><span class="name">async_group</span><span class="operator">.</span><span class="name">spawn</span><span class="punctuation">(</span><span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">call_on_done</span><span class="punctuation">,</span> <span class="name">resource2</span><span class="operator">.</span><span class="name">wait_closing</span><span class="punctuation">(),</span> <span class="name">resource1</span><span class="operator">.</span><span class="name">close</span><span class="punctuation">)</span></code></pre>
+</blockquote>
+<p>In this example, first spawn guaranties that <cite>resource1</cite> will not be closed
+until <cite>resource2</cite> is closed. Second spawn initiates closing of <cite>resource1</cite>
+once closing of <cite>resource2</cite> is detected.</p>
+</li>
+<li><p>Associate background task to resource's lifetime</p>
+<blockquote>
+<pre class="code python literal-block"><code><span class="keyword">class</span> <span class="name class">UserResource</span><span class="punctuation">(</span><span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">Resource</span><span class="punctuation">):</span><span class="whitespace">
+
+</span>    <span class="name decorator">&#64;staticmethod</span><span class="whitespace">
+</span>    <span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">create</span><span class="punctuation">()</span> <span class="operator">-&gt;</span> <span class="literal string single">'UserResource'</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name">resource</span> <span class="operator">=</span> <span class="name">UserResource</span><span class="punctuation">()</span><span class="whitespace">
+</span>        <span class="name">resource</span><span class="operator">.</span><span class="name">_async_group</span> <span class="operator">=</span> <span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">Group</span><span class="punctuation">()</span><span class="whitespace">
+
+</span>        <span class="operator">...</span>  <span class="comment single"># initialize/create resource</span><span class="whitespace">
+
+</span>        <span class="name">resource</span><span class="operator">.</span><span class="name">async_group</span><span class="operator">.</span><span class="name">spawn</span><span class="punctuation">(</span><span class="name">resource</span><span class="operator">.</span><span class="name">_run</span><span class="punctuation">)</span><span class="whitespace">
+
+</span>        <span class="keyword">return</span> <span class="name">resource</span><span class="whitespace">
+
+</span>    <span class="name decorator">&#64;property</span><span class="whitespace">
+</span>    <span class="keyword">def</span> <span class="name function">async_group</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>        <span class="keyword">return</span> <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">_async_group</span><span class="whitespace">
+
+</span>    <span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">_run</span><span class="punctuation">(</span><span class="name builtin pseudo">self</span><span class="punctuation">):</span><span class="whitespace">
+</span>        <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>            <span class="operator">...</span>  <span class="comment single"># background task's code (usually some kind of loop)</span><span class="whitespace">
+
+</span>        <span class="keyword">finally</span><span class="punctuation">:</span><span class="whitespace">
+</span>            <span class="name builtin pseudo">self</span><span class="operator">.</span><span class="name">close</span><span class="punctuation">()</span></code></pre>
+</blockquote>
+<p>Tasks spawned by group can be short lived or long lived. Some resources
+have need to execute code during whole resource active lifetime and
+termination of that code's execution should close resource.</p>
+</li>
+</ol>
+</section>
+<section id="conclusion">
+<h2>Conclusion</h2>
+<p>Based on previous analysis, Python programs utilizing coroutines and <cite>asyncio</cite>
+library should take into account following recommendations:</p>
+<ul class="simple">
+<li><p>coroutines should follow similar best practices as regular functions in
+regard of resource management</p></li>
+<li><p>functions/coroutines should ensure resource cleanup for resources
+not crossing function execution boundaries (which are not exposed as part
+of function/coroutine interface) and thus prevent &quot;resource leaks&quot;</p></li>
+<li><p>management of resources and ownership rules should be well documented for
+each occurrence of resource as part of input arguments or return values</p></li>
+<li><p>each <cite>await</cite> is potential exit point that should be taken into account
+from resource management perspective</p></li>
+<li><p><cite>asyncio</cite> tasks are resources which must be managed the same as other
+resources (e.g. file descriptors)</p></li>
+<li><p>execution of resource cleanup procedures is important part of resource
+management which should be correctly encapsulated for internal resources</p></li>
+<li><p><cite>hat.aio.uncancellable</cite> can be used to shield tasks from cancellation
+and temporary delay raising of <cite>CancelledError</cite> in cancelled task</p></li>
+<li><p><cite>hat.aio.Group</cite> can control lifetime of tasks execution and provide
+associated resource (tasks or subgroups) cleanup</p></li>
+<li><p><cite>hat.aio.Resource</cite> can be used to model resource with lifetime defined
+by associated <cite>hat.aio.Group</cite> instance</p></li>
+</ul>
+<p>Usage of <cite>hat-aio</cite> is one of possible ways to tackle resource management
+problems. Alternative solutions should also be taken into account
+(e.g. <a class="reference external" href="https://trio.readthedocs.io">Trio</a>).</p>
+</section>
+</main>
+
+
+</article>
+
+    </main>
+    <footer>
+        Copyright © 2021-2024 <a href="mailto:bozo@kopic.xyz">Bozo Kopic</a><br />
+        Content license <a href="https://creativecommons.org/licenses/by-sa/4.0">CC BY-SA</a>
+    </footer>
+</body>
+</html>

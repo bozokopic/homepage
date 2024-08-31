@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="autor" content="Bozo Kopic" />
+    <meta name="description" content="Bozo Kopic homepage" />
+    <title>Python asyncio application lifetime</title>
+    <link href="../index.xml" type="application/atom+xml" rel="alternate" />
+    <link href="../main.css" rel="stylesheet" />
+    
+    <link href="../article.css" rel="stylesheet">
+
+</head>
+<body>
+    <header>
+        <h1>Bozo Kopic - Articles</h1>
+        <nav>
+            <span>[ <a href="../index.html">About</a> ]</span>
+            <span>[ <a href="../projects.html">Projects</a> ]</span>
+            <span>[ <a href="../articles.html">Articles</a> ]</span>
+            <span>[ <a href="../index.xml">Feed</a> ]</span>
+        </nav>
+    </header>
+    <main>
+        
+
+
+
+
+<article>
+
+<div class="info">
+    <label>Published:</label>
+    <div>2020-07-10 00:00:00 UTC</div>
+    <label>Updated:</label>
+    <div>2022-08-29 11:32:00 UTC</div>
+</div>
+
+<main id="python-asyncio-application-lifetime">
+<h1 class="title">Python <cite>asyncio</cite> application lifetime</h1>
+<p>This article explores different lifetime problems associated with running
+long-living Python applications.</p>
+<section id="classic-application-lifetime">
+<h2>Classic application lifetime</h2>
+<p>Most of Python applications are implemented with simple pattern:</p>
+<pre class="code python literal-block"><code><span class="keyword namespace">import</span> <span class="name namespace">sys</span><span class="whitespace">
+
+</span><span class="keyword">def</span> <span class="name function">main</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="operator">...</span><span class="whitespace">
+
+</span><span class="keyword">if</span> <span class="name variable magic">__name__</span> <span class="operator">==</span> <span class="literal string single">'__main__'</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="name">sys</span><span class="operator">.</span><span class="name">exit</span><span class="punctuation">(</span><span class="name">main</span><span class="punctuation">())</span></code></pre>
+<p>If this pattern is applied, execution of application is confined into execution
+of single function <cite>main</cite>. This means that start of <cite>main</cite> execution is
+considered application startup and end of <cite>main</cite> execution is considered
+end of application execution.</p>
+<p>For applications that are used for processing previously available data,
+structure and execution plan for <cite>main</cite> function is mostly linear. Example of
+such <cite>main</cite> is:</p>
+<pre class="code python literal-block"><code><span class="keyword">def</span> <span class="name function">main</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="name">read_input</span><span class="punctuation">()</span><span class="whitespace">
+</span>    <span class="name">validate_data</span><span class="punctuation">()</span><span class="whitespace">
+</span>    <span class="name">process_data</span><span class="punctuation">()</span><span class="whitespace">
+</span>    <span class="name">generate_output</span><span class="punctuation">()</span></code></pre>
+<p>In this example, actions are executed sequentially and are dependent on previous
+actions execution. For such actions, their lifetime is dependent on data they
+are processing. This means that lifetime of <cite>main</cite> function (and thus lifetime
+of application) is directly dependent of processed data. If this data is
+available previous to application execution or if it is limited in quantity,
+lifetime of application is also limited. Examples of this kind of applications
+are command line utilities such as <cite>tar</cite>, <cite>git</cite>, <cite>cp</cite>, etc.</p>
+<p>For applications that do not operate on previously available data or if
+quantity of processed data is directly determined by previously processed data,
+more complex and non-deterministic execution logic is required. Example of this
+kind of applications <cite>main</cite> can be written as:</p>
+<pre class="code python literal-block"><code><span class="keyword">def</span> <span class="name function">main</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="name">initialize</span><span class="punctuation">()</span><span class="whitespace">
+</span>    <span class="keyword">while</span> <span class="operator word">not</span> <span class="name">done</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name">read_data</span><span class="punctuation">()</span><span class="whitespace">
+</span>        <span class="name">validate_data</span><span class="punctuation">()</span><span class="whitespace">
+</span>        <span class="name">process_data</span><span class="punctuation">()</span><span class="whitespace">
+</span>        <span class="name">generate_output_part</span><span class="punctuation">()</span><span class="whitespace">
+</span>    <span class="name">generate_output_end</span><span class="punctuation">()</span></code></pre>
+<p>Application that depend on data that is not previously available, are also
+dependent on the structure and time when required data will be available.
+Because of this, applications execution lifetime is often less deterministic
+and can spawn indefinite execution time. Example of this kind of applications
+are different kind of server applications (<cite>apache</cite>, <cite>xorg</cite>, ...).</p>
+</section>
+<section id="asyncio-application-lifetime">
+<h2><cite>asyncio</cite> application lifetime</h2>
+<p>Architecture and organization of long-running &quot;server&quot; applications is complex
+problem for which multiple design patters exist. One of widely used is usage
+of event loop. By using event loop, application functionality is split into
+multiple loosely connected parts which execution is triggered by occurrence of
+specific event. During execution of specific application logic, multiple events
+can be queued as result of application logic or from external sources. These
+events can be used as triggers for execution of other parts of application
+logic. Usual implementations of event loop are closely related and therefore
+usable as basic structural organization for previous long-running example
+application.</p>
+<pre class="code python literal-block"><code><span class="keyword">def</span> <span class="name function">main</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="name">register_event_subscriptions</span><span class="punctuation">()</span><span class="whitespace">
+</span>    <span class="name">queue_initial_events</span><span class="punctuation">()</span><span class="whitespace">
+</span>    <span class="keyword">while</span> <span class="operator word">not</span> <span class="name">done</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name">wait_while_queue_empty</span><span class="punctuation">()</span><span class="whitespace">
+</span>        <span class="name">deque_event</span><span class="punctuation">()</span><span class="whitespace">
+</span>        <span class="name">process_event</span><span class="punctuation">()</span><span class="whitespace">
+</span>    <span class="name">cleanup</span><span class="punctuation">()</span></code></pre>
+<p><cite>asyncio</cite> is library distributed with CPython distribution that provides
+cross-platform implementation of event loop. Together with event loop
+implementation and appropriate non-blocking IO function implementations,
+this library provides possibility to organize application logic by usage of
+coroutines. Coroutines provide synchronization points which are used for
+temporary delegation of execution flow to event loop engine. By using this
+concept, application logic can be described in sequential manner while
+execution will be split into multiple concurrent parts. Example of usual
+structure for <cite>asyncio</cite> applications is:</p>
+<pre class="code python literal-block"><code><span class="keyword namespace">import</span> <span class="name namespace">asyncio</span><span class="whitespace">
+</span><span class="keyword namespace">import</span> <span class="name namespace">sys</span><span class="whitespace">
+
+</span><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">main</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="operator">...</span><span class="whitespace">
+
+</span><span class="keyword">if</span> <span class="name variable magic">__name__</span> <span class="operator">==</span> <span class="literal string single">'__main__'</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="name">sys</span><span class="operator">.</span><span class="name">exit</span><span class="punctuation">(</span><span class="name">asyncio</span><span class="operator">.</span><span class="name">run</span><span class="punctuation">(</span><span class="name">main</span><span class="punctuation">()))</span></code></pre>
+<p>Lifetime of <cite>asyncio</cite> applications is therefore similar to other &quot;server&quot;
+and long-running application. Same problems, regarding controlling of
+application execution and lifetime, are associated with applications based
+on <cite>asyncio</cite>.</p>
+</section>
+<section id="signals">
+<h2>Signals</h2>
+<p>One of main requirement for processing data is usage of some kind input/output
+mechanism for obtaining input data and providing processing result. Usual means
+for communication between application and &quot;outside world&quot; are writing/reading
+of files, communication based on pipes or shared memory, communication based
+on sockets, etc. Usage of this kind of communication media provides application
+with possibility to actively communicate and synchronize with &quot;outside world&quot;.
+This communication is not only responsible for providing input data that
+should be processed but is also directly responsible for controlling of
+application's execution lifetime.</p>
+<p>Posix signals are asynchronous communication mechanism that is most commonly
+used for controlling of application execution. Main difference between signals
+and other previously mentioned communication methods is availability of signals
+without existence of additional explicit application logic for negotiating
+communication. This mechanism is provided by operating system and is enabled
+prior to delegation of execution control to application defined logic.</p>
+<p>Most of predefined signals have conventional semantics associated with them.
+For example, once application receives SIGINT or SIGTERM, it should finish
+execution of application logic and stop its running process. This behavior is
+even implemented as default one and assigned to each application by operating
+system kernel. Although this is the default behavior, application can
+override it by providing custom signal handling routines (even ignore request
+for application termination). Prior to execution of scripts code, Python
+interpreter overrides default behavior associated with these signals. New
+routines associated with these signals are responsible for raising
+<cite>KeyboardInterrupt</cite> exception from function that is currently being executed.
+This means that most of Python functions can raise this exception if
+application receives SIGINT or SIGTERM signal. By handling this exception,
+application can provide additional cleanup logic or ignore termination request
+according to its current state of execution.</p>
+<p>Together with signals which behavior can be overridden, some signals can not
+be overridden and are strongly enforced by operating system kernel. Example of
+such signal is SIGKILL which signals unconditional termination of application
+process. Stopping application by sending SIGKILL is therefor considered
+last resort for terminating application which is without sufficient reason
+ignoring signals SIGINT or SIGTERM.</p>
+<p>Most of programs communicate with other unknown programs through signals
+relaying on their proposed semantics. Example is command line shells which
+associate users Ctrl+C command with routines that send SIGINT to currently
+running program.</p>
+<p>If we analyze prior example of applications that are used for processing
+previously available data (applications with predefined lifetime), once user
+presses Ctrl+C, any of the currently running functions could stop execution,
+raise <cite>KeyboardInterrupt</cite> exception and propagate it to the <cite>main</cite>. In this
+case execution of <cite>main</cite> function is terminated and application process
+finishes. Due to sequential nature of data processing, this behavior is desired
+in majority of cases. Because of this, <cite>KeyboardInterrupt</cite> isn't event part
+of <cite>Exception</cite> children hierarchy so that it would not be caught by mistake
+during handling of other exceptions.</p>
+<p>For long-running applications, handling of SIGINT signal is often more complex
+and dependent of current execution state running application. This kind of
+applications rely on communication channels and protocols for communicating with
+&quot;outside world&quot;. This resources and protocols are usually statefull and should
+be properly released prior to application termination. Many of these
+applications can even postpone termination request if current processing of
+data is critical for well behaved system operation.</p>
+</section>
+<section id="asyncio-and-signals">
+<h2><cite>asyncio</cite> and signals</h2>
+<p>For determining behavior of <cite>asyncio</cite> application once it receives SIGINT,
+we will run test applications and look at console output when we press Ctrl+C:</p>
+<ul class="simple">
+<li><p>5 seconds after application is run</p></li>
+<li><p>15 seconds after application is run</p></li>
+</ul>
+<p>Code of test application (<cite>test.py</cite>) is:</p>
+<pre class="code python literal-block"><code><span class="keyword namespace">import</span> <span class="name namespace">asyncio</span><span class="whitespace">
+</span><span class="keyword namespace">import</span> <span class="name namespace">time</span><span class="whitespace">
+
+</span><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">main</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="name">time</span><span class="operator">.</span><span class="name">sleep</span><span class="punctuation">(</span><span class="literal number integer">10</span><span class="punctuation">)</span><span class="whitespace">
+</span>    <span class="keyword">await</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">sleep</span><span class="punctuation">(</span><span class="literal number integer">10</span><span class="punctuation">)</span><span class="whitespace">
+
+</span><span class="keyword">if</span> <span class="name variable magic">__name__</span> <span class="operator">==</span> <span class="literal string single">'__main__'</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="name">asyncio</span><span class="operator">.</span><span class="name">run</span><span class="punctuation">(</span><span class="name">main</span><span class="punctuation">())</span></code></pre>
+<p>When Ctrl+C is pressed 5 second after application is started, application
+exits with console output:</p>
+<pre class="literal-block">Traceback (most recent call last):
+  File &quot;test.py&quot;, line 11, in &lt;module&gt;
+    asyncio.run(main())
+  File &quot;/usr/lib/python3.7/asyncio/runners.py&quot;, line 43, in run
+    return loop.run_until_complete(main)
+  File &quot;/usr/lib/python3.7/asyncio/base_events.py&quot;, line 566, in run_until_complete
+    self.run_forever()
+  File &quot;/usr/lib/python3.7/asyncio/base_events.py&quot;, line 534, in run_forever
+    self._run_once()
+  File &quot;/usr/lib/python3.7/asyncio/base_events.py&quot;, line 1771, in _run_once
+    handle._run()
+  File &quot;/usr/lib/python3.7/asyncio/events.py&quot;, line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File &quot;test.py&quot;, line 6, in main
+    time.sleep(10)
+KeyboardInterrupt</pre>
+<p>From this call stack trace, we can notice that <cite>KeyboardInterrupt</cite> was raised
+from <cite>time.sleep</cite> function and was propagated to <cite>main</cite> coroutine which
+propagates exception to <cite>ayncio.run</cite> and stops program execution.</p>
+<p>If we run the same program and press Ctrl+C 15 seconds after application is
+started, application also exits but this time with following console
+output:</p>
+<pre class="literal-block">Traceback (most recent call last):
+  File &quot;test.py&quot;, line 11, in &lt;module&gt;
+    asyncio.run(main())
+  File &quot;/usr/lib/python3.7/asyncio/runners.py&quot;, line 43, in run
+    return loop.run_until_complete(main)
+  File &quot;/usr/lib/python3.7/asyncio/base_events.py&quot;, line 566, in run_until_complete
+    self.run_forever()
+  File &quot;/usr/lib/python3.7/asyncio/base_events.py&quot;, line 534, in run_forever
+    self._run_once()
+  File &quot;/usr/lib/python3.7/asyncio/base_events.py&quot;, line 1735, in _run_once
+    event_list = self._selector.select(timeout)
+  File &quot;/usr/lib/python3.7/selectors.py&quot;, line 468, in select
+    fd_event_list = self._selector.poll(timeout, max_ev)
+KeyboardInterrupt</pre>
+<p>From this call stack trace, we can observe that <cite>KeyboardInterrupt</cite> is raised
+from method which is part of internal <cite>asyncio</cite> implementation and is
+propagated directly to <cite>asyncio.run</cite> bypassing <cite>main</cite> coroutine.</p>
+<p>We can clearly demonstrate this behavior with little modification of above
+script:</p>
+<pre class="code python literal-block"><code><span class="keyword namespace">import</span> <span class="name namespace">asyncio</span><span class="whitespace">
+</span><span class="keyword namespace">import</span> <span class="name namespace">time</span><span class="whitespace">
+
+</span><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">main</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name">time</span><span class="operator">.</span><span class="name">sleep</span><span class="punctuation">(</span><span class="literal number integer">10</span><span class="punctuation">)</span><span class="whitespace">
+</span>    <span class="keyword">except</span> <span class="name exception">KeyboardInterrupt</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'&gt;&gt; time.sleep'</span><span class="punctuation">)</span><span class="whitespace">
+</span>        <span class="keyword">raise</span><span class="whitespace">
+</span>    <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="keyword">await</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">sleep</span><span class="punctuation">(</span><span class="literal number integer">10</span><span class="punctuation">)</span><span class="whitespace">
+</span>    <span class="keyword">except</span> <span class="name exception">KeyboardInterrupt</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'&gt;&gt; asyncio.sleep'</span><span class="punctuation">)</span><span class="whitespace">
+</span>        <span class="keyword">raise</span><span class="whitespace">
+
+</span><span class="keyword">if</span> <span class="name variable magic">__name__</span> <span class="operator">==</span> <span class="literal string single">'__main__'</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name">asyncio</span><span class="operator">.</span><span class="name">run</span><span class="punctuation">(</span><span class="name">main</span><span class="punctuation">())</span><span class="whitespace">
+</span>    <span class="keyword">except</span> <span class="name exception">KeyboardInterrupt</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'&gt;&gt; asyncio.run'</span><span class="punctuation">)</span></code></pre>
+<p>When we press Ctrl+C 5 seconds after startup, output is:</p>
+<pre class="literal-block">&gt;&gt; time.sleep
+&gt;&gt; asyncio.run</pre>
+<p>But when we press Ctrl+C 15 seconds after startup, we get:</p>
+<pre class="literal-block">&gt;&gt; asyncio.run</pre>
+<p>This example shows us that although coroutine code seems to be executed
+sequentially, on every synchronization point (in this case
+<cite>await asyncio.sleep(10)</cite>) application execution is transferred from coroutine
+to <cite>asyncio</cite> event loop. This observation is specially important when
+handling of signals is necessary, because application can receive lifetime
+controlling signals at any time.</p>
+</section>
+<section id="hat-aio-run-asyncio">
+<h2><cite>hat.aio.run_asyncio</cite></h2>
+<p><cite>hat-aio</cite> package provides function <cite>hat.aio.run_asyncio</cite> which can be used
+instead of <cite>asyncio.run</cite>. This function overrides default handlers associated
+with signals SIGINT and SIGTERM and replaces them with routine which cancels
+initially run task (task created based on execution of <cite>main</cite> coroutine).
+Once this method finishes, all signal handlers are restored to previous state.</p>
+<p>Cancellation of <cite>asyncio</cite> task is implemented as raising of
+<cite>asyncio.CancelledError</cite> exception at most nested currently waiting
+synchronization point.</p>
+<p>By suppressing <cite>KeyboardInterrupt</cite> and raising <cite>asyncio.CancelledError</cite>
+exceptions, we have better reasoning where and when this exception will occur.
+This allows us easier handling of termination requests and better organization
+and control of cleanup code execution.</p>
+<p>Because <cite>asyncio.CancelledError</cite> exceptions are raised only on synchronization
+points (where <cite>await</cite> is used), additional care must be used that coroutines
+do not use long lasting blocking code and thus support prompt reaction to
+received signals.</p>
+<p>Additionally, <cite>hat.aio.run_asyncio</cite> cancels running task only once, no matter
+how many signals are sent to application. This provides easier cleanup
+implementation because cleanup procedure won't be interrupter with another
+termination request.</p>
+<p>We can run test script by replacing <cite>asyncio.run</cite> with <cite>hat.aio.run_asyncio</cite>
+and <cite>KeyboardInterrupt</cite> with <cite>asyncio.CancelledError</cite>:</p>
+<pre class="code python literal-block"><code><span class="keyword namespace">import</span> <span class="name namespace">asyncio</span><span class="whitespace">
+</span><span class="keyword namespace">import</span> <span class="name namespace">time</span><span class="whitespace">
+</span><span class="keyword namespace">import</span> <span class="name namespace">hat.util</span><span class="whitespace">
+
+</span><span class="keyword">async</span> <span class="keyword">def</span> <span class="name function">main</span><span class="punctuation">():</span><span class="whitespace">
+</span>    <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name">time</span><span class="operator">.</span><span class="name">sleep</span><span class="punctuation">(</span><span class="literal number integer">10</span><span class="punctuation">)</span><span class="whitespace">
+</span>    <span class="keyword">except</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">CancelledError</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'&gt;&gt; time.sleep'</span><span class="punctuation">)</span><span class="whitespace">
+</span>        <span class="keyword">raise</span><span class="whitespace">
+</span>    <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="keyword">await</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">sleep</span><span class="punctuation">(</span><span class="literal number integer">10</span><span class="punctuation">)</span><span class="whitespace">
+</span>    <span class="keyword">except</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">CancelledError</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'&gt;&gt; asyncio.sleep'</span><span class="punctuation">)</span><span class="whitespace">
+</span>        <span class="keyword">raise</span><span class="whitespace">
+
+</span><span class="keyword">if</span> <span class="name variable magic">__name__</span> <span class="operator">==</span> <span class="literal string single">'__main__'</span><span class="punctuation">:</span><span class="whitespace">
+</span>    <span class="keyword">try</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name">hat</span><span class="operator">.</span><span class="name">aio</span><span class="operator">.</span><span class="name">run_asyncio</span><span class="punctuation">(</span><span class="name">main</span><span class="punctuation">())</span><span class="whitespace">
+</span>    <span class="keyword">except</span> <span class="name">asyncio</span><span class="operator">.</span><span class="name">CancelledError</span><span class="punctuation">:</span><span class="whitespace">
+</span>        <span class="name builtin">print</span><span class="punctuation">(</span><span class="literal string single">'&gt;&gt; hat.aio.run_asyncio'</span><span class="punctuation">)</span></code></pre>
+<p>If we press Ctrl+C after 5 seconds, application will continue running for
+another 5 seconds and then terminate with console output:</p>
+<pre class="literal-block">&gt;&gt; asyncio.sleep
+&gt;&gt; hat.aio.run_asyncio</pre>
+<p>If we press Ctrl+C after 15 seconds, application will terminate instantly
+with console output:</p>
+<pre class="literal-block">&gt;&gt; asyncio.sleep
+&gt;&gt; hat.aio.run_asyncio</pre>
+</section>
+<section id="hat-aio-run-asyncio-vs-asyncio-run">
+<h2><cite>hat.aio.run_asyncio</cite> vs <cite>asyncio.run</cite></h2>
+<p>Although at first glace, <cite>hat.aio.run_asyncio</cite> looks exactly as <cite>asyncio.run</cite>
+with added signal handling, user of this function should be aware of few
+subtle differences.</p>
+<p>First obvious difference is additional optional parameter <cite>loop</cite> which can
+be provided to <cite>hat.aio.run_asyncio</cite>. This parameter can be set to loop
+instance which should be used as basis for provided coroutine execution.
+If this parameter is set to <span class="docutils literal">None</span>, <cite>hat.aio.run_asyncio</cite> will create
+new loop instance and register it as current thread's default loop
+(same behavior as in <cite>asyncio.run</cite>).</p>
+<p>Second important difference is associated with &quot;cleanup&quot; procedure. When
+execution of coroutine by <cite>asyncio.run</cite> is done, all active tasks, associated
+with loop instance, are canceled and loop is run until all cleanup
+actions are finished. Then loop is closed and <cite>asyncio.run</cite> finishes execution.
+In contrast, <cite>hat.aio.run_asyncio</cite> only cancels single task - one representing
+execution of provided coroutine. Once this task is done
+(because of available result or <cite>asyncio.CancelledError</cite> propagation),
+<cite>hat.aio.run_asyncio</cite> finishes execution without closing loop instance (if
+loop instance is not provided as argument, newly created loop is closed
+without canceling other running tasks).</p>
+<p>Reasons for different &quot;cleanup&quot; semantics of <cite>hat.aio.run_asyncio</cite> are:</p>
+<ul class="simple">
+<li><p>If instance of loop is explicitly provided as <cite>hat.aio.run_asyncio</cite>
+argument, then it should be kept open for possibility of it's re-usage
+(usage of single loop instance for multiple <cite>hat.aio.run_asyncio</cite> calls).</p></li>
+<li><p>By explicitly providing only single coroutine to <cite>hat.aio.run_asyncio</cite>,
+responsibility of <cite>hat.aio.run_asyncio</cite> is restricted only to
+execution/canceling of provided coroutine. All other tasks don't have
+to be corelated to provided coroutine and therefor should not be
+canceled by <cite>hat.aio.run_asyncio</cite>.</p></li>
+<li><p>It is responsibility of each task (executing coroutine) to manage
+lifetime of possibly newly spawned sub-tasks. Therefor, if &quot;main&quot;
+coroutine spawns new tasks, execution of this tasks should be
+taken into account during &quot;main&quot; coroutine cleanup (usually by
+canceling and/or awaiting their execution).</p></li>
+</ul>
+</section>
+<section id="signals-in-windows">
+<h2>Signals in Windows</h2>
+<p>Unfortunately, Windows doesn't have full support for Posix signals. Most of
+the signal handling procedures, as defined by C standard library, operate only
+inside scope of single process and can not be used for communication between
+processes.</p>
+<p>For Windows application process, request for process termination is usually
+done by calling <cite>TerminateProcess</cite> (<cite>kernel32.dll</cite> function). This request is
+unconditional and with its semantics it is closest to the usage of SIGKILL
+signal.</p>
+<p>For console applications, asynchronous request for process termination can be
+triggered by calling <cite>GenerateConsoleCtrlEvent</cite> (<cite>kernel32.dll</cite> function).
+Default behavior for all console applications is to stop application execution
+once either of this two events are received. This default behavior can be
+overridden by calling <cite>SetConsoleCtrlHandler</cite> and providing alternative
+event handlers. Alternative method for raising CTRL_C_EVENT is associated
+with user Ctrl+C key press when application is running in active command
+prompt. This behavior resembles behavior associated with Posix SIGINT and
+SIGTERM signals.</p>
+<p>Main difference between events raised with <cite>GenerateConsoleCtrlEvent</cite> and Posix
+signals is that raising of CTRL_C_EVENT and CTRL_BREAK_EVENT can only target
+process group instead of single process (or even thread in case of <cite>pthread</cite>
+implementation). This means that once we raise CTRL_C_EVENT or
+CTRL_BREAK_EVENT, all processes in target process group will receive and handle
+sent event. Further restriction is put on CTRL_C_EVENT which can only be raised
+from process which is part of the target process group. Because of this
+restriction, every process raising CTRL_C_EVENT must also handle event that
+itself raised.</p>
+</section>
+<section id="controlling-python-applications-lifetime-on-windows">
+<h2>Controlling Python applications lifetime on Windows</h2>
+<p>Python tries to provide uniform API for different platforms. Because of this,
+external control of application lifetime for Python applications running on
+Windows is possible with same interface used for sending and handling of
+Posix signals. But because of previously mentioned restrictions, additional
+care should be used.</p>
+<p>Most significant restrictions and rules for using Python signal mapping to
+Windows events:</p>
+<ul class="simple">
+<li><p>Children processes which are to be controlled by events should be
+created with <cite>subprocess.Popen</cite> 's <cite>CREATE_NEW_PROCESS_GROUP</cite> flag.
+Creation of new group is mandatory if calling process doesn't
+want to handle sent event.</p></li>
+<li><p><cite>os.kill</cite> and <cite>subprocess.Process.send_signal</cite> doesn't receive process
+identification. Instead, process group identification is expected. Process
+group identification is the same as process identification for which new
+group was created. Process group identification <cite>0</cite> identifies process
+group to which current process belongs.</p></li>
+<li><p>Raising of SIGKILL is implemented as calling <cite>subprocess.Popen.terminate</cite>
+which calls <cite>TerminateProcess</cite>.</p></li>
+<li><p><cite>os.kill</cite> and <cite>subprocess.Process.send_signal</cite> support only
+SIGKILL, CTRL_C_EVENT and CTRL_BREAK_EVENT.</p></li>
+<li><p>When writing signal handlers in Python, CTRL_C_EVENT is notified as
+SIGINT signal and CTRL_BREAK_EVENT is notified as SIGBREAK signal.</p></li>
+<li><p>CTRL_C_EVENT and CTRL_BREAK_EVENT are dispatched to all processes in
+process group.</p></li>
+<li><p>Only CTRL_BREAK_EVENT can be raised from one process group targeting
+other process group.</p></li>
+</ul>
+</section>
+<section id="hat-aio-run-asyncio-on-windows">
+<h2><cite>hat.aio.run_asyncio</cite> on Windows</h2>
+<p>Implementation of <cite>run_asyncio</cite> takes into account previously mentioned
+restrictions. This means that signals for which default behavior is temporary
+overridden include SIGBREAK.</p>
+<p>Depending on used implementation of <cite>asyncio</cite> event loop, there exist
+possibility that signal handlers will not be triggered while event loop is in
+state of waiting for IO associated events. This problem is currently addressed
+by providing periodical &quot;wakeup&quot; of event loop every 0.5 seconds. This period
+is responsible for latency between raising events and notification of their
+occurrence which can last up to 0.5 second.</p>
+<p>Because of these addition logic implemented inside <cite>run_asyncio</cite>, same code
+provided as example of running <cite>asyncio</cite> application with
+<cite>hat.aio.run_asyncio</cite> can be run on Windows with same behavior as on other
+systems.</p>
+</section>
+</main>
+
+
+</article>
+
+    </main>
+    <footer>
+        Copyright © 2021-2024 <a href="mailto:bozo@kopic.xyz">Bozo Kopic</a><br />
+        Content license <a href="https://creativecommons.org/licenses/by-sa/4.0">CC BY-SA</a>
+    </footer>
+</body>
+</html>
